@@ -126,83 +126,121 @@ class OrangeDetectorAI:
         else:
             print("Ultralytics no está disponible. Usando detector de visión artificial por color/forma.")
 
-    def detect_hsv_shape(self, frame):
-        """Detección por visión computacional clásica."""
+    def detect_moldy_citrus_shape(self, frame):
+        """
+        Detector geométrico especializado para cítricos en cualquier estado:
+        Desde naranjas sanas hasta naranjas severamente podridas/con moho verde.
+        Rechaza estrictamente brazos o manos verificando circularidad y compacidad.
+        """
+        h_frame, w_frame = frame.shape[:2]
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        lower_orange = np.array([3, 70, 55], dtype="uint8")
-        upper_orange = np.array([30, 255, 255], dtype="uint8")
         
-        mask = cv2.inRange(hsv, lower_orange, upper_orange)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        # Máscaras de color: naranja cítrico + moho verdoso/azulado
+        orange_mask = cv2.inRange(hsv, (3, 60, 45), (32, 255, 255))
+        mold_mask = cv2.inRange(hsv, (35, 25, 40), (88, 255, 220))
+        fruit_mask = cv2.bitwise_or(orange_mask, mold_mask)
 
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        fruit_mask = cv2.morphologyEx(fruit_mask, cv2.MORPH_CLOSE, kernel)
+        fruit_mask = cv2.morphologyEx(fruit_mask, cv2.MORPH_OPEN, kernel)
+
+        contours, _ = cv2.findContours(fruit_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         best_box = None
         best_conf = 0.0
-        h_frame, w_frame = frame.shape[:2]
-        min_area = (h_frame * w_frame) * 0.005
+        min_area = (h_frame * w_frame) * 0.025
 
         for cnt in contours:
             area = cv2.contourArea(cnt)
             if area < min_area:
                 continue
 
+            x, y, w, h = cv2.boundingRect(cnt)
+            aspect_ratio = float(w) / max(1, h)
+            
+            # Una fruta es compacta (0.65 a 1.45). Los brazos humanos son alargados (>1.8)
+            if not (0.65 <= aspect_ratio <= 1.45):
+                continue
+
             perimeter = cv2.arcLength(cnt, True)
             if perimeter == 0:
                 continue
-
             circularity = 4 * np.pi * (area / (perimeter * perimeter))
-            if circularity > 0.45:
-                x, y, w, h = cv2.boundingRect(cnt)
-                aspect_ratio = float(w) / max(h, 1)
-                if 0.60 <= aspect_ratio <= 1.55:
-                    conf = min(0.96, 0.45 + (circularity * 0.35) + min(0.2, area / (h_frame * w_frame * 0.1)))
-                    if conf > best_conf:
-                        best_conf = conf
-                        best_box = (x, y, x + w, y + h)
+            
+            hull = cv2.convexHull(cnt)
+            hull_area = cv2.contourArea(hull)
+            solidity = float(area) / max(1, hull_area)
+
+            # Circularidad > 0.50 y solidez > 0.80 garantizan objeto redondo/abultado (fruta)
+            if circularity > 0.50 and solidity > 0.80:
+                conf = min(0.95, 0.50 + (circularity * 0.30) + (solidity * 0.15))
+                if conf > best_conf:
+                    best_conf = conf
+                    best_box = (x, y, x + w, y + h)
 
         if best_box is not None:
-            return best_box, best_conf, "Vision (Color/Forma)"
+            return best_box, best_conf, "Vision (Citrico/Moho)"
         return None, 0.0, None
 
     def detect(self, frame):
         """
-        Retorna (bbox, conf, engine) donde bbox = (x1, y1, x2, y2).
-        Utiliza YOLOv8 como árbitro estricto de Inteligencia Artificial para evitar
-        falsos positivos causados por brazos, manos, ropa o movimientos humanos.
+        Detector maestro:
+        1. YOLOv8 con soporte para:
+           - 49: 'orange'
+           - Clases de comida redonda que YOLO asigna a cítricos podridos/moteados:
+             {47: 'apple', 53: 'pizza', 54: 'donut', 32: 'sports ball'}
+             con verificación de color cítrico/moho.
+        2. Detector geométrico de cítricos podridos/sanos (rechazando brazos por forma y solidez).
         """
         if self.using_yolo and self.yolo_model is not None:
             try:
-                results = self.yolo_model(frame, verbose=False, conf=self.conf_threshold)
+                results = self.yolo_model(frame, verbose=False, conf=0.25)
                 best_box = None
                 best_conf = 0.0
+                detected_engine = "IA YOLOv8"
+
+                # Clases de comida / objetos redondos en COCO donde caen frutas podridas
+                CANDIDATE_FOOD = {49, 47, 53, 54, 32}
 
                 for r in results:
                     boxes = r.boxes
                     for box in boxes:
                         cls_id = int(box.cls[0].item())
                         conf = float(box.conf[0].item())
-                        
-                        # 49 = 'orange' en el dataset COCO de YOLO
-                        if cls_id == 49 and conf >= 0.35:
+
+                        # 49 = 'orange' estándar
+                        if cls_id == 49 and conf >= 0.30:
                             if conf > best_conf:
                                 best_conf = conf
                                 coords = box.xyxy[0].cpu().numpy().astype(int)
                                 best_box = (coords[0], coords[1], coords[2], coords[3])
+                                detected_engine = "IA YOLOv8"
+
+                        # Naranja podrida/con moho (YOLO suele clasificarla como pizza, manzana o donut)
+                        elif cls_id in CANDIDATE_FOOD and conf >= 0.25:
+                            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
+                            w_box, h_box = x2 - x1, y2 - y1
+                            ar = float(w_box) / max(1, h_box)
+                            if 0.65 <= ar <= 1.50:
+                                crop = frame[max(0, y1):min(frame.shape[0], y2), max(0, x1):min(frame.shape[1], x2)]
+                                if crop.size > 0:
+                                    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+                                    orange_mask = cv2.inRange(hsv, (3, 60, 45), (32, 255, 255))
+                                    mold_mask = cv2.inRange(hsv, (35, 25, 40), (88, 255, 220))
+                                    citrus_ratio = (np.count_nonzero(orange_mask) + np.count_nonzero(mold_mask)) / float(crop.shape[0] * crop.shape[1])
+                                    if citrus_ratio > 0.15 and conf > best_conf:
+                                        best_conf = conf
+                                        best_box = (x1, y1, x2, y2)
+                                        detected_engine = "IA YOLOv8"
 
                 if best_box is not None:
-                    return best_box, best_conf, "IA YOLOv8"
-                
-                # Si YOLO está activo y no ve una naranja, NO permitir disparos falsos por color
-                return None, 0.0, None
+                    return best_box, best_conf, detected_engine
 
             except Exception:
                 pass
 
-        # Si YOLO no estuviera instalado, fallback estricto anti-piel humana
-        box, conf, engine = self.detect_hsv_shape(frame)
-        if box is not None and conf >= 0.70:
+        # 2. Respaldo geométrico de cítricos podridos/sanos (rechaza brazos por solidez y circularidad)
+        box, conf, engine = self.detect_moldy_citrus_shape(frame)
+        if box is not None and conf >= 0.60:
             return box, conf, engine
 
         return None, 0.0, None
