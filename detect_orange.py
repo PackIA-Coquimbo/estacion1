@@ -162,10 +162,16 @@ class OrangeDetectorAI:
                         best_conf = conf
                         best_box = (x, y, x + w, y + h)
 
-        return best_box, best_conf, "Vision (Color/Forma)"
+        if best_box is not None:
+            return best_box, best_conf, "Vision (Color/Forma)"
+        return None, 0.0, None
 
     def detect(self, frame):
-        """Retorna (bbox, conf, engine) donde bbox = (x1, y1, x2, y2)."""
+        """
+        Retorna (bbox, conf, engine) donde bbox = (x1, y1, x2, y2).
+        Utiliza YOLOv8 como árbitro estricto de Inteligencia Artificial para evitar
+        falsos positivos causados por brazos, manos, ropa o movimientos humanos.
+        """
         if self.using_yolo and self.yolo_model is not None:
             try:
                 results = self.yolo_model(frame, verbose=False, conf=self.conf_threshold)
@@ -178,36 +184,29 @@ class OrangeDetectorAI:
                         cls_id = int(box.cls[0].item())
                         conf = float(box.conf[0].item())
                         
-                        # 49 = 'orange' en COCO dataset
-                        if cls_id == 49:
+                        # 49 = 'orange' en el dataset COCO de YOLO
+                        if cls_id == 49 and conf >= 0.35:
                             if conf > best_conf:
                                 best_conf = conf
                                 coords = box.xyxy[0].cpu().numpy().astype(int)
                                 best_box = (coords[0], coords[1], coords[2], coords[3])
-                        elif cls_id in (47, 32) and conf > 0.45:
-                            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
-                            x1, y1 = max(0, x1), max(0, y1)
-                            x2, y2 = min(frame.shape[1], x2), min(frame.shape[0], y2)
-                            crop = frame[y1:y2, x1:x2]
-                            if crop.size > 0:
-                                hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-                                orange_mask = cv2.inRange(hsv, (3, 70, 55), (30, 255, 255))
-                                orange_ratio = np.count_nonzero(orange_mask) / float(crop.shape[0] * crop.shape[1])
-                                if orange_ratio > 0.20 and conf > best_conf:
-                                    best_conf = conf
-                                    best_box = (x1, y1, x2, y2)
 
                 if best_box is not None:
                     return best_box, best_conf, "IA YOLOv8"
+                
+                # Si YOLO está activo y no ve una naranja, NO permitir disparos falsos por color
+                return None, 0.0, None
+
             except Exception:
                 pass
 
-        # Motor de respaldo por color y forma
+        # Si YOLO no estuviera instalado, fallback estricto anti-piel humana
         box, conf, engine = self.detect_hsv_shape(frame)
-        if box is not None and conf >= self.conf_threshold:
+        if box is not None and conf >= 0.70:
             return box, conf, engine
 
         return None, 0.0, None
+
 
 
 class OrangeInspectionApp:
