@@ -1,67 +1,71 @@
 # PackIACamara 📷🤖
 
-Proyecto para adquisición de video, diagnóstico, auto-ajuste de iluminación ambiental y procesamiento de visión artificial (IA).
+Sistema inteligente de visión por computador con auto-calibración de iluminación, detección de objetos mediante Inteligencia Artificial (YOLOv8) y captura fotográfica automatizada.
 
 ---
 
-## 📊 Estado Actual: Fase 1 y 2 (Cámara y Ajuste Automático) — ✅ COMPLETADAS
+## 📊 Estado Actual: Fase 1, 2 y 3 — ✅ COMPLETADAS
 
-1. **Hardware verificado:** Cámara `Webcam` (USB DirectShow / Media Foundation, Hardware ID `VID_1D6C&PID_1278`).
-2. **Ajuste Automático de Iluminación implementado:**
-   - **Compensación de Entorno Dinámica:** Ya sea en habitaciones oscuras, con luz tenue, con exceso de luz o con **fuerte contraluz** (como ventanas detrás del objeto), el sistema detecta la iluminación en la región central del objeto y la equilibra automáticamente.
-   - **Algoritmo Híbrido:**
-     - **CLAHE (Contrast Limited Adaptive Histogram Equalization)** en espacio de color LAB para recuperar detalles en sombras sin quemar las zonas iluminadas.
-     - **Corrección Gamma Adaptativa Ponderada:** Centrada en los objetos que están al frente de la cámara con suavizado temporal (evita parpadeos).
-     - **Compensación de Color:** Mantiene la vivacidad de los colores al aumentar la exposición en zonas oscuras.
-   - **Rendimiento:** Más de 200 FPS de procesamiento por fotograma (latencia imperceptible de ~2.5 ms).
+1. **Hardware verificado:** Cámara `Webcam` (DirectShow / Media Foundation, Hardware ID `VID_1D6C&PID_1278`).
+2. **Ajuste Automático de Iluminación:**
+   - Algoritmo híbrido CLAHE (espacio LAB) + Gamma dinámico ponderado por objeto central.
+   - Corrige sombras, contraluz (ventanas) o exceso de luz a más de 200 FPS.
+3. **Detección de Objetos y Auto-Captura (Prueba: Naranja 🍊):**
+   - **Motor Dual:** Red Neuronal **YOLOv8n** (clase `orange` COCO #49) con respaldo de visión por color HSV y circularidad.
+   - **Disparador Inteligente:** Al identificar una naranja de manera estable (evitando falsos positivos):
+     - Produce un **efecto visual de flash** en la pantalla.
+     - Reproduce un **sonido de obturador** en Windows.
+     - Guarda automáticamente **2 fotografías en `captures/naranjas/`**:
+       1. `naranja_YYYYMMDD_HHMMSS.jpg`: Fotografía limpia en alta resolución con iluminación optimizada.
+       2. `naranja_YYYYMMDD_HHMMSS_detectada.jpg`: Fotografía con la mira/bounding box, porcentaje de confianza y datos del modelo.
+     - Aplica un tiempo de enfriamiento (cooldown) de 3.5 segundos para no saturar con fotos repetidas.
 
 ---
 
-## ⚡ Ejecución Rápida con un Doble Clic (`.bat`)
+## ⚡ Lanzadores Rápidos con un Doble Clic (`.bat`)
 
-Para activar el modo automático sin necesidad de abrir la consola:
+En el Explorador de Windows, solo haz doble clic en el archivo que desees:
 
-- **`iniciar_camara_auto.bat`** 🚀: Haz doble clic en este archivo en el Explorador de Windows para abrir directamente la cámara con el ajuste automático de iluminación activado.
-- **`probar_camara.bat`**: Ejecuta una prueba rápida de diagnóstico y guarda una instantánea en la carpeta `captures/`.
+| Archivo | Función |
+| :--- | :--- |
+| **`iniciar_detector_naranja.bat`** 🍊📸 | **Inicia el detector de naranjas con auto-iluminación y captura automática de fotos.** |
+| **`iniciar_camara_auto.bat`** 💡 | Inicia la cámara solo con el ajuste automático de iluminación ambiental (sin detección). |
+| **`probar_camara.bat`** 🔍 | Realiza un diagnóstico rápido del sensor y captura una instantánea de prueba. |
 
 ---
 
 ## 🎮 Controles en Pantalla (HUD Interactivo)
 
-Cuando la ventana de la cámara esté abierta, puedes usar los siguientes atajos de teclado:
+Durante la ejecución del detector de naranjas:
 
-| Tecla | Acción | Descripción |
-| :---: | :--- | :--- |
-| **`A`** | Alternar Modo Automático | Cambia entre la imagen cruda original y la imagen auto-ajustada. |
-| **`S`** | Modo Split-Screen (Comparación) | Divide la pantalla en dos: izquierda original vs derecha mejorada en tiempo real. |
-| **`C`** | Capturar Foto | Guarda una foto procesada en la carpeta `captures/`. |
-| **`+`** / **`-`** | Calibrar Brillo Objetivo | Aumenta o disminuye el nivel de iluminación deseado si prefieres una imagen más clara u oscura. |
-| **`Q`** o **`ESC`** | Salir | Cierra la ventana y libera la cámara de manera limpia. |
+- **Detección automática:** Solo coloca una naranja frente a la cámara; el recuadro naranja se fijará sobre ella y tomará la foto automáticamente.
+- **`C`**: Forzar captura manual en cualquier instante.
+- **`Q`** o **`ESC`**: Cerrar y salir de la aplicación.
 
 ---
 
-## 📁 Estructura del Proyecto
+## 📁 Estructura del Repositorio
 
 ```text
 PackIACamara/
-├── iniciar_camara_auto.bat # Lanzador directo de Windows con modo automático
-├── probar_camara.bat        # Lanzador para prueba rápida de diagnóstico
-├── auto_camera.py          # Motor de ajuste automático de brillo y contraste
-├── test_camera.py          # Script de diagnóstico técnico
-├── view_stream.py          # Visualizador simple
-├── captures/               # Fotografías de prueba e instantáneas guardadas
-├── .venv/                  # Entorno virtual aislado de Python
-├── requirements.txt        # Dependencias (opencv-python, numpy, pillow)
-└── README.md               # Documentación general del proyecto
+├── iniciar_detector_naranja.bat # Lanzador: Detector IA de naranjas + Auto-Foto
+├── iniciar_camara_auto.bat       # Lanzador: Modo auto-iluminación
+├── probar_camara.bat             # Lanzador: Test rápido de hardware
+├── detect_orange.py             # Módulo principal: Detección IA + Captura
+├── auto_camera.py               # Motor de balance adaptativo de iluminación
+├── test_camera.py               # Script de comprobación inicial
+├── view_stream.py               # Visualizador básico
+├── yolov8n.pt                   # Pesos pre-entrenados del modelo YOLOv8n
+├── captures/                    # Directorio de instantáneas
+│   └── naranjas/                # Fotos capturadas automáticamente de la naranja
+├── requirements.txt             # Dependencias (opencv, numpy, pillow, ultralytics)
+└── README.md                    # Documentación y bitácora del proyecto
 ```
 
 ---
 
-## 🎯 Próximo Paso: Fase 3 (Identificación de Objetos con IA)
+## 🚀 Próximos Pasos Posibles
 
-Con la cámara funcionando y ajustando la iluminación automáticamente según el entorno, el siguiente paso es conectar el modelo de IA para detectar e identificar los objetos al frente:
-
-1. **Detección de objetos cotidianos/personas** (YOLOv8 / YOLO11 en tiempo real).
-2. **Reconocimiento o seguimiento de objetos específicos** según tu necesidad (etiquetas, piezas, productos, cajas, etc.).
-3. **Reconocimiento facial o de posturas**.
-4. **Lectura de códigos QR / códigos de barras / OCR**.
+- Ampliar la lista de objetos a detectar (botellas, herramientas, cajas, personas, etc.).
+- Conectar una base de datos o API para enviar la foto automáticamente cuando se detecte el objeto.
+- Activar conteo de objetos o control de calidad visual.

@@ -12,6 +12,13 @@ __pycache__/
 .vscode/
 .idea/
 
-# Captures (optional: keep captures folder or ignore temp captures)
+# Captures
 captures/*.jpg
+captures/naranjas/*.jpg
 !captures/.gitkeep
+!captures/naranjas/.gitkeep
+
+# Model weights
+*.pt
+*.onnx
+
