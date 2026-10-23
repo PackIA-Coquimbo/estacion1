@@ -151,13 +151,21 @@ class AutoLightingCamera:
         print("Conectando con la camara...")
 
         cap = cv2.VideoCapture(self.camera_index)
-        if not cap.isOpened():
-            print(f"Error: No se pudo abrir la camara en el indice {self.camera_index}.")
-            return False
-
-        # Configurar resolucion HD
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        ret, test_frame = cap.read() if cap.isOpened() else (False, None)
+        if not ret:
+            if cap.isOpened():
+                cap.release()
+            cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            ret, test_frame = cap.read() if cap.isOpened() else (False, None)
+
+        if not cap.isOpened() or not ret:
+            print(f"Error: No se pudo abrir la camara en el indice {self.camera_index}.")
+            print("Aviso: Asegurate de que otra aplicacion (ej. la aplicacion 'Camara' de Windows) no este ocupando el dispositivo.")
+            return False
         
         actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

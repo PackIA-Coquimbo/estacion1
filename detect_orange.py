@@ -39,7 +39,7 @@ class OrangeDetectorAI:
     1. Motor principal: Red Neuronal YOLOv8 (clase 'orange', ID 49 en COCO)
     2. Motor complementario/fallback: Segmentación por color HSV y circularidad
     """
-    def __init__(self, confidence_threshold=0.38):
+    def __init__(self, confidence_threshold=0.28):
         self.conf_threshold = confidence_threshold
         self.yolo_model = None
         self.using_yolo = False
@@ -63,12 +63,11 @@ class OrangeDetectorAI:
         """
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         
-        # Rango de color naranja típico (H: 5-25, S: 100-255, V: 80-255)
-        lower_orange = np.array([5, 95, 80], dtype="uint8")
-        upper_orange = np.array([25, 255, 255], dtype="uint8")
+        # Rango amplio y flexible para cualquier variedad de naranja/mandarina
+        lower_orange = np.array([3, 70, 55], dtype="uint8")
+        upper_orange = np.array([30, 255, 255], dtype="uint8")
         
         mask = cv2.inRange(hsv, lower_orange, upper_orange)
-        # Limpieza morfológica para reducir ruido
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
@@ -79,7 +78,7 @@ class OrangeDetectorAI:
         best_conf = 0.0
         
         h_frame, w_frame = frame.shape[:2]
-        min_area = (h_frame * w_frame) * 0.008  # Mínimo tamaño relativo
+        min_area = (h_frame * w_frame) * 0.005  # Mínimo tamaño relativo
 
         for cnt in contours:
             area = cv2.contourArea(cnt)
@@ -92,14 +91,13 @@ class OrangeDetectorAI:
 
             circularity = 4 * np.pi * (area / (perimeter * perimeter))
             
-            # Una naranja es aproximadamente circular (circularidad > 0.55)
-            if circularity > 0.50:
+            # Una naranja es aproximadamente circular
+            if circularity > 0.45:
                 x, y, w, h = cv2.boundingRect(cnt)
                 aspect_ratio = float(w) / max(h, 1)
                 
-                # Relación de aspecto cercana a 1 (cuadrada/circular)
-                if 0.65 <= aspect_ratio <= 1.45:
-                    conf = min(0.95, 0.45 + (circularity * 0.35) + min(0.2, area / (h_frame * w_frame * 0.1)))
+                if 0.60 <= aspect_ratio <= 1.55:
+                    conf = min(0.96, 0.45 + (circularity * 0.35) + min(0.2, area / (h_frame * w_frame * 0.1)))
                     if conf > best_conf:
                         best_conf = conf
                         best_box = (x, y, x + w, y + h)
@@ -115,7 +113,6 @@ class OrangeDetectorAI:
         # 1. Intentar con YOLO si está habilitado
         if self.using_yolo and self.yolo_model is not None:
             try:
-                # Inferencia rápida sin logs invasivos
                 results = self.yolo_model(frame, verbose=False, conf=self.conf_threshold)
                 best_box = None
                 best_conf = 0.0
@@ -127,30 +124,28 @@ class OrangeDetectorAI:
                         conf = float(box.conf[0].item())
                         
                         # 49 = 'orange' en COCO dataset
-                        # 47 = 'apple', 32 = 'sports ball' (a veces una naranja es clasificada como manzana)
                         if cls_id == 49:
                             if conf > best_conf:
                                 best_conf = conf
                                 coords = box.xyxy[0].cpu().numpy().astype(int)
                                 best_box = (coords[0], coords[1], coords[2], coords[3])
-                        elif cls_id in (47, 32) and conf > 0.55:
-                            # Verificar si tiene tonalidad naranja en la región
+                        # Respaldo por si el clasificador la etiqueta como manzana o pelota de deportes
+                        elif cls_id in (47, 32) and conf > 0.45:
                             x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
                             x1, y1 = max(0, x1), max(0, y1)
                             x2, y2 = min(frame.shape[1], x2), min(frame.shape[0], y2)
                             crop = frame[y1:y2, x1:x2]
                             if crop.size > 0:
                                 hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-                                orange_mask = cv2.inRange(hsv, (5, 90, 80), (25, 255, 255))
+                                orange_mask = cv2.inRange(hsv, (3, 70, 55), (30, 255, 255))
                                 orange_ratio = np.count_nonzero(orange_mask) / float(crop.shape[0] * crop.shape[1])
-                                if orange_ratio > 0.25 and conf > best_conf:
+                                if orange_ratio > 0.20 and conf > best_conf:
                                     best_conf = conf
                                     best_box = (x1, y1, x2, y2)
 
                 if best_box is not None:
                     return best_box, best_conf, "IA YOLOv8"
-            except Exception as e:
-                # Si falla inferencia temporalmente, acudir a fallback
+            except Exception:
                 pass
 
         # 2. Motor de visión por color y forma (respaldo robusto)
@@ -169,10 +164,11 @@ class OrangeAutoCaptureApp:
 
         self.save_dir = os.path.join("captures", "naranjas")
         os.makedirs(self.save_dir, exist_ok=True)
+        os.makedirs("captures", exist_ok=True)
 
         # Parámetros del disparador automático
         self.consecutive_detections = 0
-        self.min_consecutive_needed = 4   # ~0.15 segundos continuo para evitar falsos positivos
+        self.min_consecutive_needed = 3   # ~0.10s continuo para disparo ágil
         self.last_capture_time = 0.0
         self.cooldown_seconds = 3.5       # Espera entre fotos automáticas consecutivas
         
@@ -189,7 +185,7 @@ class OrangeAutoCaptureApp:
                 pass
 
     def trigger_auto_capture(self, clean_frame, annotated_frame, bbox, conf, engine):
-        """Guarda la foto y activa el efecto de captura."""
+        """Guarda la foto en captures/ y en captures/naranjas/ y activa el efecto de captura."""
         now = time.time()
         self.last_capture_time = now
         self.flash_counter = 8  # Duración del flash visual (en fotogramas)
@@ -198,19 +194,30 @@ class OrangeAutoCaptureApp:
         threading.Thread(target=self.play_chime, daemon=True).start()
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Guardar en captures/ (raíz) y en captures/naranjas/
+        file_clean_root = os.path.join("captures", f"naranja_{timestamp}.jpg")
+        file_annotated_root = os.path.join("captures", f"naranja_{timestamp}_detectada.jpg")
+        file_latest_root = os.path.join("captures", "naranja_ultima_captura.jpg")
+        
         filename_clean = os.path.join(self.save_dir, f"naranja_{timestamp}.jpg")
         filename_annotated = os.path.join(self.save_dir, f"naranja_{timestamp}_detectada.jpg")
 
+        cv2.imwrite(file_clean_root, clean_frame)
+        cv2.imwrite(file_annotated_root, annotated_frame)
+        cv2.imwrite(file_latest_root, annotated_frame)
         cv2.imwrite(filename_clean, clean_frame)
         cv2.imwrite(filename_annotated, annotated_frame)
 
         self.last_saved_info = {
-            "file": os.path.basename(filename_clean),
+            "file": os.path.basename(file_clean_root),
             "time": time.time(),
             "conf": conf,
             "engine": engine
         }
-        print(f"\n[FOTO CAPTURADA] ¡Naranja identificada ({conf*100:.1f}%)! Guardada en: {filename_clean}")
+        print(f"\n>>> [FOTO CAPTURADA EXITOSAMENTE] Naranja identificada ({conf*100:.1f}%) con {engine}!")
+        print(f"    Guardada en: {file_clean_root}")
+        print(f"    Guardada en: {file_annotated_root}")
 
     def draw_ui(self, display_frame, bbox, conf, engine, fps):
         """Dibuja la mira telescópica de detección, información de IA y notificaciones."""
@@ -288,12 +295,22 @@ class OrangeAutoCaptureApp:
         print("Iniciando camara y calibrando entorno...")
 
         cap = cv2.VideoCapture(self.camera_index)
-        if not cap.isOpened():
-            print(f"Error: No se pudo abrir la camara en el indice {self.camera_index}.")
-            return False
-
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        ret, test_frame = cap.read() if cap.isOpened() else (False, None)
+        if not ret:
+            if cap.isOpened():
+                cap.release()
+            # Intento con backend alternativo DirectShow
+            cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            ret, test_frame = cap.read() if cap.isOpened() else (False, None)
+
+        if not cap.isOpened() or not ret:
+            print(f"Error: No se pudo obtener senal de la camara en el indice {self.camera_index}.")
+            print("Aviso: Asegurate de que ninguna otra aplicacion (como la app 'Camara' de Windows o Zoom/Teams) tenga bloqueada la camara.")
+            return False
 
         print("\nCamara lista.")
         print("Instrucciones:")
