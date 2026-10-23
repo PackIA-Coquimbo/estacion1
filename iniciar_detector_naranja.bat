@@ -1,16 +1,18 @@
 @echo off
-title PackIACamara - Detector de Naranjas con Auto-Captura
+title PackIACamara - Detector Inteligente de Naranjas (1 Foto por Objeto)
 color 0E
 
 echo =====================================================================
-echo           PACK IA CAMARA - DETECTOR DE NARANJAS (IA + VISION)
+echo    PACK IA CAMARA - DETECTOR INTELIGENTE POR CICLO DE VIDA
 echo =====================================================================
 echo.
-echo 1. Ajuste automatico de iluminacion activado.
-echo 2. Deteccion de naranja activa.
-echo 3. Tomara una foto y reproducira un sonido al identificarla.
+echo  1. Ajuste automatico de iluminacion activado.
+echo  2. Coloca una naranja  -^> Toma 1 sola foto y la bloquea.
+echo  3. Mientras este ahi   -^> NO saca mas fotos.
+echo  4. Retirala            -^> Detecta la salida y se rearma.
+echo  5. Coloca otra naranja -^> Detecta la nueva y le saca foto.
 echo.
-echo Guardando fotos en: captures\naranjas\
+echo Guardando fotos en: captures\ (y captures\naranjas\)
 echo.
 
 cd /d "%~dp0"

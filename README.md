@@ -1,46 +1,58 @@
 # PackIACamara 📷🤖
 
-Sistema inteligente de visión por computador con auto-calibración de iluminación, detección de objetos mediante Inteligencia Artificial (YOLOv8) y captura fotográfica automatizada.
+Sistema inteligente de visión por computador con auto-calibración de iluminación, detección de objetos por Inteligencia Artificial (YOLOv8) y **captura fotográfica automatizada por ciclo de vida (1 foto por objeto)**.
 
 ---
 
-## 📊 Estado Actual: Fase 1, 2 y 3 — ✅ COMPLETADAS
+## 📊 Estado Actual: Ciclo de Vida y Detección de Entrada / Salida — ✅ IMPLEMENTADO
 
-1. **Hardware verificado:** Cámara `Webcam` (DirectShow / Media Foundation, Hardware ID `VID_1D6C&PID_1278`).
-2. **Ajuste Automático de Iluminación:**
-   - Algoritmo híbrido CLAHE (espacio LAB) + Gamma dinámico ponderado por objeto central.
-   - Corrige sombras, contraluz (ventanas) o exceso de luz a más de 200 FPS.
-3. **Detección de Objetos y Auto-Captura (Prueba: Naranja 🍊):**
-   - **Motor Dual:** Red Neuronal **YOLOv8n** (clase `orange` COCO #49) con respaldo de visión por color HSV y circularidad.
-   - **Disparador Inteligente:** Al identificar una naranja de manera estable (evitando falsos positivos):
-     - Produce un **efecto visual de flash** en la pantalla.
-     - Reproduce un **sonido de obturador** en Windows.
-     - Guarda automáticamente **2 fotografías en `captures/naranjas/`**:
-       1. `naranja_YYYYMMDD_HHMMSS.jpg`: Fotografía limpia en alta resolución con iluminación optimizada.
-       2. `naranja_YYYYMMDD_HHMMSS_detectada.jpg`: Fotografía con la mira/bounding box, porcentaje de confianza y datos del modelo.
-     - Aplica un tiempo de enfriamiento (cooldown) de 3.5 segundos para no saturar con fotos repetidas.
+El sistema ahora opera mediante una **Máquina de Estados de Ciclo de Vida**:
+
+```text
+[ESPERANDO] 
+    │
+    ▼ (Colocas una naranja frente a la cámara)
+[NUEVA NARANJA DETECTADA]
+    │  - Calibra iluminación
+    │  - Dispara flash visual y sonido de obturador
+    │  - Guarda 1 sola fotografía (naranja_001_...)
+    ▼
+[NARANJA REGISTRADA (BLOQUEADA)]
+    │  - Mientras la naranja permanezca en escena: CERO FOTOS ADICIONALES
+    │
+    ▼ (Retiras la naranja del plano)
+[DETECCIÓN DE SALIDA]
+    │  - El sistema detecta que el objeto se fue
+    ▼
+[REARMADO AUTOMÁTICO] ──> Listo para recibir la Naranja #002
+```
+
+### Características Principales:
+1. **Sin ráfagas repetidas**: Cada naranja recibe exactamente **1 fotografía**.
+2. **Detección de Retiro/Salida**: Detecta automáticamente cuando se quita la naranja del plano y se prepara para el siguiente objeto.
+3. **Contador Progresivo**: Etiqueta y enumera cada naranja de forma ordenada:
+   - `captures/naranja_001_YYYYMMDD_HHMMSS.jpg`
+   - `captures/naranja_001_YYYYMMDD_HHMMSS_detectada.jpg`
+   - `captures/naranja_002_...`
+4. **Auto-Ajuste de Iluminación Activo**: Corrige contraluz, sombras y sobreexposición en tiempo real a 30 FPS.
 
 ---
 
 ## ⚡ Lanzadores Rápidos con un Doble Clic (`.bat`)
 
-En el Explorador de Windows, solo haz doble clic en el archivo que desees:
-
 | Archivo | Función |
 | :--- | :--- |
-| **`iniciar_detector_naranja.bat`** 🍊📸 | **Inicia el detector de naranjas con auto-iluminación y captura automática de fotos.** |
-| **`iniciar_camara_auto.bat`** 💡 | Inicia la cámara solo con el ajuste automático de iluminación ambiental (sin detección). |
-| **`probar_camara.bat`** 🔍 | Realiza un diagnóstico rápido del sensor y captura una instantánea de prueba. |
+| **`iniciar_detector_naranja.bat`** 🍊📸 | **Inicia el detector inteligente: 1 foto por naranja, detecta cuando se retira y espera la siguiente.** |
+| **`iniciar_camara_auto.bat`** 💡 | Inicia la cámara únicamente con el balance adaptativo de iluminación ambiental. |
+| **`probar_camara.bat`** 🔍 | Diagnóstico técnico rápido del sensor. |
 
 ---
 
-## 🎮 Controles en Pantalla (HUD Interactivo)
+## 🎮 Controles en Pantalla (HUD)
 
-Durante la ejecución del detector de naranjas:
-
-- **Detección automática:** Solo coloca una naranja frente a la cámara; el recuadro naranja se fijará sobre ella y tomará la foto automáticamente.
-- **`C`**: Forzar captura manual en cualquier instante.
-- **`Q`** o **`ESC`**: Cerrar y salir de la aplicación.
+- **Automático:** Simplemente coloca una naranja -> Se toma 1 foto -> Retírala -> Coloca la siguiente.
+- **`C`**: Forzar foto manual si lo deseas.
+- **`Q`** o **`ESC`**: Salir y cerrar la aplicación limpiamente.
 
 ---
 
@@ -48,24 +60,14 @@ Durante la ejecución del detector de naranjas:
 
 ```text
 PackIACamara/
-├── iniciar_detector_naranja.bat # Lanzador: Detector IA de naranjas + Auto-Foto
-├── iniciar_camara_auto.bat       # Lanzador: Modo auto-iluminación
-├── probar_camara.bat             # Lanzador: Test rápido de hardware
-├── detect_orange.py             # Módulo principal: Detección IA + Captura
+├── iniciar_detector_naranja.bat # Lanzador: Detector con ciclo de vida (1 foto por objeto)
+├── iniciar_camara_auto.bat       # Lanzador: Auto-iluminación
+├── probar_camara.bat             # Lanzador: Diagnóstico
+├── detect_orange.py             # Motor de detección IA + Ciclo de vida (Entrada/Foto/Salida)
 ├── auto_camera.py               # Motor de balance adaptativo de iluminación
-├── test_camera.py               # Script de comprobación inicial
-├── view_stream.py               # Visualizador básico
-├── yolov8n.pt                   # Pesos pre-entrenados del modelo YOLOv8n
-├── captures/                    # Directorio de instantáneas
-│   └── naranjas/                # Fotos capturadas automáticamente de la naranja
-├── requirements.txt             # Dependencias (opencv, numpy, pillow, ultralytics)
-└── README.md                    # Documentación y bitácora del proyecto
+├── yolov8n.pt                   # Pesos del modelo YOLOv8n
+├── captures/                    # Fotos organizadas numeradas (_001, _002...)
+│   └── naranjas/                # Copia de respaldo
+├── requirements.txt             # Dependencias (opencv<5, numpy, pillow, ultralytics)
+└── README.md                    # Bitácora del proyecto
 ```
-
----
-
-## 🚀 Próximos Pasos Posibles
-
-- Ampliar la lista de objetos a detectar (botellas, herramientas, cajas, personas, etc.).
-- Conectar una base de datos o API para enviar la foto automáticamente cuando se detecte el objeto.
-- Activar conteo de objetos o control de calidad visual.
