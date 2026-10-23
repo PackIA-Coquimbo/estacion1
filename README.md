@@ -53,6 +53,11 @@ estacion1/
 │   ├── image_quality.py     # Análisis de calidad fotométrica (brillo, contraste, nitidez)
 │   ├── client_e2.py         # Despacho de imágenes validadas hacia la Estación 2
 │   └── config.py            # Configuración, parámetros y umbrales de captura
+├── LogicaPackIA/            # Lógica completa de adquisición, IA (YOLOv8) y control de calidad
+│   ├── iniciar_detector_naranja.bat # Lanzador Windows de inspección
+│   ├── detect_orange.py     # Detección, clasificación de calidad y anti-spam
+│   ├── auto_camera.py       # Ajuste dinámico de iluminación
+│   └── captures/            # Almacenamiento organizado de capturas
 ├── tests/                   # Datos de prueba, imágenes y validación offline
 ├── Dockerfile
 ├── docker-compose.yml

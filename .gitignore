@@ -15,10 +15,13 @@ __pycache__/
 # Captures
 captures/*.jpg
 captures/naranjas/*.jpg
-!captures/.gitkeep
-!captures/naranjas/.gitkeep
+LogicaPackIA/captures/*.jpg
+LogicaPackIA/captures/**/*.jpg
+!LogicaPackIA/captures/**/.gitkeep
+!LogicaPackIA/captures/.gitkeep
 
 # Model weights
 *.pt
 *.onnx
+
 
