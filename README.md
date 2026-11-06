@@ -7,6 +7,7 @@ La estación 1 detecta naranjas en la zona central de la cámara, comprueba encu
 2.- Acordar que necesita la estación 2: Se les enviarán una foto de cada cámara pero hay que ajustar formatos para que la enviemos y la reciban bien.
 3.- Cuando la estación 6 tenga la cinta en funcionamiento hay que ir probando la cámara con la cinta moviéndose.
 4.- Cualquier mejora que añadan considerar que más adelante debe funcionan en sistema embebido como raspberry pi
+5.- Cambiar resolución a 480x640 porque esa es la que están ocupando para trabajar en la estación 2.
 
 ## Uso en PC
 
