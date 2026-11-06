@@ -1,28 +1,62 @@
-# Python virtual environment
+# Entornos y caches de Python
 .venv/
 venv/
+env/
 ENV/
-
-# Python cache
+env.bak/
+venv.bak/
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+*.egg-info/
+.Python
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+.installed.cfg
+*.egg
+build/
+dist/
 
-# IDE & Editor settings
+# Editor, pruebas y configuracion local
 .vscode/
 .idea/
+.pytest_cache/
+.tox/
+.coverage
+.coverage.*
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.env
+.env.local
+*.local
+*.log
+logs/
+*.swp
+*.swo
+*~
+.DS_Store
 
-# Captures
-captures/*.jpg
-captures/naranjas/*.jpg
-LogicaPackIA/captures/*.jpg
-LogicaPackIA/captures/**/*.jpg
-LogicaPackIA/outbox_e2/
-!LogicaPackIA/captures/**/.gitkeep
-!LogicaPackIA/captures/.gitkeep
+# Fotos y bandeja local de entrega
+logica/captures/
+logica/outbox_e2/
+LogicaPackIA/
+*.jpg
+*.jpeg
+*.png
 
-# Model weights
+# Modelos descargados localmente
 *.pt
 *.onnx
-
-
+PackIACamara/

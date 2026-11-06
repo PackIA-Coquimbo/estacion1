@@ -17,8 +17,8 @@ from .tracker import FruitTracker
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CAPTURES = ROOT / "LogicaPackIA" / "captures" / "estacion1"
-OUTBOX = ROOT / "LogicaPackIA" / "outbox_e2"
+CAPTURES = ROOT / "logica" / "captures" / "estacion1"
+OUTBOX = ROOT / "logica" / "outbox_e2"
 ZONE_X = (0.25, 0.75)
 ZONE_Y = (0.35, 0.98)
 

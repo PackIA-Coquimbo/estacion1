@@ -1,33 +1,32 @@
 # PackIACamara — Estación 1
 
-La estación 1 fotografía las naranjas mientras pasan ante la cámara. Detecta una fruta dentro de la zona central marcada en el visor, espera una imagen con buen encuadre, iluminación, contraste y enfoque, y guarda un recorte de la naranja para la estación 2. **No clasifica el estado de la fruta.**
+La estación 1 detecta naranjas en la zona central de la cámara, comprueba encuadre, iluminación, contraste y enfoque, y guarda un recorte por fruta. Puede seguir varias naranjas separadas en una misma imagen. **No clasifica su estado**: eso corresponde a la estación 2.
 
-## Uso
+## Uso en PC
 
-En Windows, abre [`LogicaPackIA/iniciar_detector_naranja.bat`](LogicaPackIA/iniciar_detector_naranja.bat). También puedes ejecutar `python -m src.main` desde la raíz del proyecto. Pulsa `Q` o `Esc` para cerrar el visor.
+En Windows, abre [`logica/iniciar_detector_naranja.bat`](logica/iniciar_detector_naranja.bat), o ejecuta `python -m src.main` desde la raíz del repositorio. La ventana muestra la zona de captura; pulsa `Q` o `Esc` para salir. También se puede ejecutar sin ventana con `python -m src.main --headless` y detener con `Ctrl+C`.
 
-El programa puede detectar varias naranjas separadas dentro de la zona marcada y guarda un recorte por cada una. Hace seguimiento de cada fruta visible para evitar nuevas fotos mientras permanece en el cuadro. Si dos naranjas se tocan y forman una sola silueta, la separación aún requiere pruebas con la cinta real.
+Los recortes se guardan en `logica/captures/estacion1/`. Cada JPG se copia a `logica/outbox_e2/` junto a un JSON con identificador, cámara, hora, coordenadas y nitidez. La entrega a estación 2 permanece en `pending` porque el receptor todavía no está definido. Consulta el [borrador de integración](docs/propuesta_integracion_estacion2.md).
 
-Los recortes de la naranja se guardan en `LogicaPackIA/captures/estacion1/`. Cada recorte también se copia a `LogicaPackIA/outbox_e2/` junto a un JSON con fecha, identificador, coordenadas de la naranja y tamaño del recorte. La entrega figura como `pending` porque la estación 2 todavía no ha definido su receptor. No se marca como enviada hasta completar esa integración.
+## Dos cámaras USB
 
-`LogicaPackIA/detect_orange.py` conserva compatibilidad con el nombre anterior, pero también inicia solo la captura de estación 1.
-
-## Ejecución sin internet y traslado a Raspberry Pi
-
-La captura y la bandeja de salida funcionan completamente en el equipo local: el programa no descarga modelos ni consulta servicios externos. Prepara las dependencias antes de la demostración. Las fotos quedan en disco aunque la estación 2 no esté conectada.
-
-En Raspberry Pi OS, instala previamente `python3-opencv` y `python3-numpy` desde los repositorios del sistema. Si se usa una cámara CSI de Raspberry Pi, instala también `python3-picamera2`. En el equipo de demostración se puede iniciar así, desde la raíz del proyecto:
+El mismo programa puede ejecutarse una vez por cámara, con un identificador diferente y una carpeta de datos compartida. Por ejemplo:
 
 ```bash
-# Cámara USB / V4L2
-python3 -m src.main --backend opencv --headless --data-dir ~/packia-data
-
-# Cámara CSI / Picamera2
-python3 -m src.main --backend picamera2 --headless --data-dir ~/packia-data
+python -m src.main --backend opencv --camera 0 --camera-id cam_izquierda --data-dir datos
+python -m src.main --backend opencv --camera 1 --camera-id cam_derecha --data-dir datos
 ```
 
-Con `--headless` no se abre ninguna ventana; `Ctrl+C` detiene el programa. `--camera`, `--width` y `--height` permiten ajustar el dispositivo y la resolución. Con `--data-dir`, las fotos quedan en `captures/` y los pares JPG + JSON para estación 2 en `outbox_e2/` dentro del directorio indicado. Sin `--data-dir` se usan las carpetas del repositorio.
+Las fotos incluyen `camera_id` y un seguimiento local. **Aún falta el coordinador que relacione las dos fotos de una naranja mediante un `fruit_id` común.** Como ambas cámaras mirarán la misma zona desde ángulos distintos, ese emparejamiento requiere calibración con el montaje real. Si dos frutas se tocan y forman una sola silueta, su separación tampoco está validada todavía.
 
-Para las dos cámaras USB previstas, se puede ejecutar el mismo programa por separado con `--backend opencv --camera 0 --camera-id cam_izquierda` y `--backend opencv --camera 1 --camera-id cam_derecha`, usando el mismo `--data-dir`. En Linux conviene usar los enlaces estables de `/dev/v4l/by-id/` o `/dev/v4l/by-path/` en `--camera`, porque los números `/dev/videoX` pueden cambiar tras reiniciar. Cada captura incluye `camera_id` y un identificador de seguimiento local. **Esta modalidad aún no empareja las dos vistas de una misma naranja**; hace falta un coordinador y calibración de ambas vistas para asignar un `fruit_id` común, especialmente cuando pasan varias frutas simultáneas.
+## Ejecución offline en Raspberry Pi
 
-Esta adaptación deja listo el código para probar en Raspberry Pi, pero aún debe verificarse con el modelo de Pi, la cámara, el montaje y la velocidad real de la cinta que se usarán en la demostración.
+La captura no descarga modelos ni necesita internet. Prepara las dependencias antes de la demostración. Con dos cámaras USB, instala previamente `python3-opencv` y `python3-numpy` en Raspberry Pi OS y prueba ambas cámaras a la vez en el equipo definitivo.
+
+```bash
+python3 -m src.main --backend opencv --camera 0 --camera-id cam_izquierda --headless --data-dir ~/packia-data
+```
+
+En Linux, `--camera` también admite rutas de `/dev/v4l/by-id/` o `/dev/v4l/by-path/` para evitar que cambie la asignación de cámara tras reiniciar. `--width` y `--height` ajustan la resolución. Con `--data-dir`, fotos y bandeja de salida se almacenan fuera del código para facilitar el traslado a la Raspberry Pi.
+
+La prueba en el PC confirma el flujo de una cámara; faltan pruebas con dos cámaras y con la cinta en movimiento.
