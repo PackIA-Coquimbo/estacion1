@@ -2,6 +2,12 @@
 
 La estación 1 detecta naranjas en la zona central de la cámara, comprueba encuadre, iluminación, contraste y enfoque, y guarda un recorte por fruta. Puede seguir varias naranjas separadas en una misma imagen. **No clasifica su estado**: eso corresponde a la estación 2.
 
+--MEJORAS QUE FALTAN
+1.- El programa captura ambas naranjas en la zona de captura pero si se ponen juntas no captura bien, hay que mejorar eso o que capture ambas dentro de la zona y se les envie a la estación 2 una foto con ambas naranjas.
+2.- Acordar que necesita la estación 2: Se les enviarán una foto de cada cámara pero hay que ajustar formatos para que la enviemos y la reciban bien.
+3.- Cuando la estación 6 tenga la cinta en funcionamiento hay que ir probando la cámara con la cinta moviéndose.
+4.- Cualquier mejora que añadan considerar que más adelante debe funcionan en sistema embebido como raspberry pi
+
 ## Uso en PC
 
 En Windows, abre [`logica/iniciar_detector_naranja.bat`](logica/iniciar_detector_naranja.bat), o ejecuta `python -m src.main` desde la raíz del repositorio. La ventana muestra la zona de captura; pulsa `Q` o `Esc` para salir. También se puede ejecutar sin ventana con `python -m src.main --headless` y detener con `Ctrl+C`.
