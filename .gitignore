@@ -17,6 +17,7 @@ captures/*.jpg
 captures/naranjas/*.jpg
 LogicaPackIA/captures/*.jpg
 LogicaPackIA/captures/**/*.jpg
+LogicaPackIA/outbox_e2/
 !LogicaPackIA/captures/**/.gitkeep
 !LogicaPackIA/captures/.gitkeep
 
