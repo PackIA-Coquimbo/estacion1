@@ -11,8 +11,10 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image
 
 from .camera import open_camera
+from .output_image import prepare_output
 from .tracker import FruitTracker
 
 
@@ -98,8 +100,12 @@ def save_capture(frame, box, score, captures_dir, outbox_dir, camera_id, track_i
                 min(width, x2 + pad), min(height, y2 + pad))
     cx1, cy1, cx2, cy2 = crop_box
     fruit_photo = frame[cy1:cy2, cx1:cx2]
-    if fruit_photo.size == 0 or not cv2.imwrite(str(path), fruit_photo, [cv2.IMWRITE_JPEG_QUALITY, 95]):
+    if fruit_photo.size == 0:
         raise OSError(f"No se pudo guardar {path}")
+    source_crop_height, source_crop_width = fruit_photo.shape[:2]
+    rgb_crop = Image.fromarray(cv2.cvtColor(fruit_photo, cv2.COLOR_BGR2RGB))
+    output_photo, framing, _ = prepare_output(rgb_crop, None, (0, 0, 1, 1), "pad")
+    output_photo.save(path, "JPEG", quality=95, subsampling=0)
     outgoing_photo = outbox_dir / path.name
     shutil.copy2(path, outgoing_photo)
     metadata = {
@@ -108,10 +114,13 @@ def save_capture(frame, box, score, captures_dir, outbox_dir, camera_id, track_i
         "camera_track_id": track_id,
         "captured_at": datetime.now().astimezone().isoformat(timespec="milliseconds"),
         "object_type": "naranja",
-        "image_width": fruit_photo.shape[1],
-        "image_height": fruit_photo.shape[0],
+        "image_width": output_photo.width,
+        "image_height": output_photo.height,
         "source_image_width": width,
         "source_image_height": height,
+        "source_crop_width": source_crop_width,
+        "source_crop_height": source_crop_height,
+        "output_framing": framing,
         "bbox_xyxy": list(box),
         "crop_xyxy": list(crop_box),
         "sharpness": round(score, 2),
