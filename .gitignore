@@ -51,6 +51,8 @@ logs/
 # Fotos y bandeja local de entrega
 logica/captures/
 logica/outbox_e2/
+salidas_estacion2/
+evidencia_estacion1/
 LogicaPackIA/
 *.jpg
 *.jpeg

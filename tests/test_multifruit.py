@@ -7,6 +7,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image
 
 from src.main import assess, detect_oranges, save_capture
 from src.tracker import FruitTracker
@@ -47,7 +48,13 @@ class MultiFruitTest(unittest.TestCase):
             self.assertEqual(len(records), 2)
             self.assertEqual({record["camera_track_id"] for record in records}, {1, 2})
             self.assertTrue(all(record["camera_id"] == "cam_izq" for record in records))
-            self.assertTrue(all(record["image_width"] < frame.shape[1] for record in records))
+            self.assertTrue(all((record["image_width"], record["image_height"]) == (480, 640)
+                                for record in records))
+            for record in records:
+                photo = root / "outbox" / record["photo"]
+                with Image.open(photo) as saved:
+                    self.assertEqual(saved.size, (480, 640))
+                self.assertEqual(record["output_framing"], "pad")
 
 
 if __name__ == "__main__":

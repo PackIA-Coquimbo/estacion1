@@ -3,25 +3,31 @@
 import os
 
 import cv2
+from PIL import Image
 
 
 class OpenCVCamera:
     def __init__(self, index, width, height):
-        backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_V4L2
-        self.capture = cv2.VideoCapture(index, backend)
-        if not self.capture.isOpened():
-            self.capture.release()
-            self.capture = cv2.VideoCapture(index)
-        if not self.capture.isOpened():
-            raise RuntimeError(f"No se pudo abrir la camara OpenCV {index}")
-        self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        backends = ([cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
+                    if os.name == "nt" else [cv2.CAP_V4L2, cv2.CAP_ANY])
+        for backend in backends:
+            capture = cv2.VideoCapture(index, backend)
+            if capture.isOpened():
+                capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                self.capture = capture
+                return
+            capture.release()
+        raise RuntimeError(f"No se pudo abrir la camara OpenCV {index}")
 
     def read(self):
         return self.capture.read()
 
     def release(self):
         self.capture.release()
+
+    def get(self, property_id):
+        return self.capture.get(property_id)
 
 
 class PiCamera2:
@@ -70,3 +76,8 @@ def open_camera(backend, index, width, height):
                     f"OpenCV: {opencv_error}; Picamera2: {picamera_error}"
                 ) from picamera_error
     raise ValueError(f"Backend de camara desconocido: {backend}")
+
+
+def frame_to_image(frame):
+    """Convierte BGR de OpenCV a RGB para el flujo de dos cámaras."""
+    return Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))

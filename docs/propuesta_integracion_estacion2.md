@@ -27,13 +27,13 @@
   "view_index": 1,
   "view_count": 2,
   "captured_at": "2026-11-06T18:43:44.172Z",
-  "image_width": 314,
-  "image_height": 277,
+  "image_width": 480,
+  "image_height": 640,
   "sha256": "<hash del JPEG>"
 }
 ```
 
-`fruit_id`, `view_index` y `view_count` son campos **propuestos para la integración de dos cámaras**; todavía no los genera el software actual. `lot_id` se agrega si el proceso físico lo proporciona. El tamaño de la imagen y el hash permiten verificar que se recibió el archivo correcto. Las coordenadas del recorte pueden enviarse como campos adicionales si estación 2 las necesita.
+`fruit_id`, `view_index` y `view_count` siguen siendo campos **propuestos para la integración automática de dos cámaras**. El modo local `src.paired_capture` usa `id_fruta` para asociar dos vistas cuando pasa una fruta a la vez; todavía no implementa este contrato HTTP. `lot_id` se agrega si el proceso físico lo proporciona. Los JPG aceptados se guardan a 480×640 píxeles (ancho×alto). La resolución fija no sustituye la comprobación de detalle real sobre la fruta. El tamaño de la imagen y el hash permiten verificar que se recibió el archivo correcto. Las coordenadas del recorte pueden enviarse como campos adicionales si estación 2 las necesita.
 
 ## Dos cámaras y varias naranjas simultáneas
 
