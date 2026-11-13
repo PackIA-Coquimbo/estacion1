@@ -52,4 +52,4 @@ python3 -m src.main --backend opencv --camera 0 --camera-id cam_izquierda --head
 
 En Linux, `--camera` también admite rutas de `/dev/v4l/by-id/` o `/dev/v4l/by-path/` para evitar que cambie la asignación de cámara tras reiniciar. `--width` y `--height` ajustan la resolución. Con `--data-dir`, fotos y bandeja de salida se almacenan fuera del código para facilitar el traslado a la Raspberry Pi.
 
-La prueba documentada en PC confirma el flujo de una cámara. El modo pareado y la salida 480×640 cuentan con pruebas automáticas, pero faltan pruebas físicas con las dos cámaras y con la cinta en movimiento.
+El modo pareado y la salida 480×640 cuentan con pruebas automáticas. La [validación física de dos cámaras en PC](docs/validacion_dos_camaras_2026-11-13.md) confirmó cinco pares aceptados, uno por naranja de prueba. Aún faltan pruebas con fondo controlado, cinta en movimiento y Raspberry Pi.
