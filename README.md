@@ -31,6 +31,8 @@ Las fotos incluyen `camera_id` y un seguimiento local. **Aún falta el coordinad
 
 Para probar **una fruta a la vez** con las dos cámaras, usa el modo de captura pareada. Este modo abre ambas cámaras en un mismo proceso y asigna un `id_fruta` común a sus dos JPG. No resuelve la asociación de varias frutas simultáneas entre cámaras.
 
+En Linux, ejecuta desde la terminal el lanzador `./iniciar_estacion1_dos_camaras.sh`. Detecta cámaras de captura USB mediante udev y usa sus rutas persistentes en `/dev/v4l/by-id` o `/dev/v4l/by-path`, en lugar de índices que pueden cambiar. Si detecta más de dos, solicita elegir cuáles dos usar para que selecciones las cámaras externas y excluyas la integrada. Requiere `udevadm` y dos cámaras USB reconocidas por el sistema. También puedes pasar una ruta Linux directamente a `--camera` y `--camera-2`.
+
 ```powershell
 python -m src.probe_cameras 0 1
 python -m src.paired_capture --lot Prueba_001 --camera 0 --camera-2 1
