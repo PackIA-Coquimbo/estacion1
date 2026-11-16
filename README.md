@@ -31,14 +31,40 @@ Las fotos incluyen `camera_id` y un seguimiento local. **Aún falta el coordinad
 
 Para probar **una fruta a la vez** con las dos cámaras, usa el modo de captura pareada. Este modo abre ambas cámaras en un mismo proceso y asigna un `id_fruta` común a sus dos JPG. No resuelve la asociación de varias frutas simultáneas entre cámaras.
 
-En Linux, ejecuta desde la terminal el lanzador `./iniciar_estacion1_dos_camaras.sh`. Detecta cámaras de captura USB mediante udev y usa sus rutas persistentes en `/dev/v4l/by-id` o `/dev/v4l/by-path`, en lugar de índices que pueden cambiar. Si detecta más de dos, solicita elegir cuáles dos usar para que selecciones las cámaras externas y excluyas la integrada. Requiere `udevadm` y dos cámaras USB reconocidas por el sistema. También puedes pasar una ruta Linux directamente a `--camera` y `--camera-2`.
+#### Windows
+
+Instala Python 3 y las dependencias desde PowerShell en la raíz del repositorio:
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\iniciar_estacion1_dos_camaras.bat
+```
+
+El lanzador comprueba qué índices de cámara entregan imagen al ejecutarse, incluida la cámara integrada si Windows la expone. Si encuentra más de dos, muestra los índices disponibles y pide elegir las dos cámaras USB externas; excluye la integrada si aparece. Si solo encuentra dos cámaras, las selecciona automáticamente, por lo que en ese caso deben ser las dos cámaras externas. La lista muestra índices OpenCV, no nombres de modelo. Cierra otras aplicaciones que puedan estar usando las cámaras antes de iniciarlo.
+
+#### Linux (distribuciones basadas en Debian)
+
+Instala los paquetes del sistema, crea un entorno virtual e instala las dependencias del proyecto:
+
+```bash
+sudo apt update
+sudo apt install python3 python3-venv udev v4l-utils
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+./iniciar_estacion1_dos_camaras.sh
+```
+
+El lanzador detecta cámaras de captura USB mediante udev y usa sus rutas persistentes en `/dev/v4l/by-id` o `/dev/v4l/by-path`, en lugar de índices que pueden cambiar. Si detecta más de dos, solicita elegir cuáles dos usar para que selecciones las cámaras externas y excluyas la integrada. Requiere `udevadm` y dos cámaras USB reconocidas por el sistema. También puedes pasar una ruta Linux directamente a `--camera` y `--camera-2`.
+
+Para comprobar cámaras o iniciar manualmente en Windows:
 
 ```powershell
 python -m src.probe_cameras 0 1
 python -m src.paired_capture --lot Prueba_001 --camera 0 --camera-2 1
 ```
 
-También puedes abrir `iniciar_estacion1_dos_camaras.bat`. El comprobador abre ambas cámaras a la vez e informa la resolución real de cada una. Si los índices 0 y 1 no funcionan, prueba otros, por ejemplo `1 2`, y cierra aplicaciones que estén usando las cámaras. En Windows se prueban DirectShow, Media Foundation y el backend predeterminado. El modo pareado solicita 1280×720 como resolución de captura; puedes cambiarla con `--capture-width` y `--capture-height`. El tamaño de salida sigue siendo 480×640.
+El comprobador abre ambas cámaras a la vez e informa la resolución real de cada una. Si los índices indicados no funcionan, prueba otros índices detectados y cierra aplicaciones que estén usando las cámaras. En Windows se prueban DirectShow, Media Foundation y el backend predeterminado. El modo pareado solicita 1280×720 como resolución de captura; puedes cambiarla con `--capture-width` y `--capture-height`. El tamaño de salida sigue siendo 480×640.
 
 Coloca las dos cámaras de forma que vean la misma zona. Con la zona vacía, pulsa **B** para calibrar el fondo de ambas. Presenta una naranja, pulsa **C** y revisa que `salidas_estacion2/Prueba_001/` contenga dos JPG de 480×640 y un JSON con el mismo `id_fruta`. Las capturas rechazadas se conservan a resolución original en `evidencia_estacion1/rechazadas/` para revisar luz, enfoque y posición. Si giras y vuelves a fotografiar una naranja, registra qué nuevos `id_fruta` corresponden a esa naranja física.
 
