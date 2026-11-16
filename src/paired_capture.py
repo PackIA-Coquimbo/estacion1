@@ -97,8 +97,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="PackIA estación 1: captura por fruta en cinta")
     parser.add_argument("--lot", required=True, help="Identificador de lote")
     parser.add_argument("--fruit", default="fruta_001", help="ID inicial de fruta")
-    parser.add_argument("--camera", type=int, default=0, help="Índice de la primera cámara")
-    parser.add_argument("--camera-2", type=int, help="Índice de la segunda cámara, opcional")
+    parser.add_argument("--camera", type=camera_source, default=0,
+                        help="Índice o dispositivo de la primera cámara")
+    parser.add_argument("--camera-2", type=camera_source,
+                        help="Índice o dispositivo de la segunda cámara, opcional")
     parser.add_argument("--capture-width", type=int, default=1280,
                         help="Ancho solicitado a cada cámara (por defecto 1280)")
     parser.add_argument("--capture-height", type=int, default=720,
@@ -117,6 +119,10 @@ def parse_args() -> argparse.Namespace:
                         help="Recortar alrededor de la fruta o conservar todo con bordes")
     parser.add_argument("--evidence", type=Path, default=Path("evidencia_estacion1"))
     return parser.parse_args()
+
+
+def camera_source(value: str) -> int | str:
+    return int(value) if value.isdecimal() else value
 
 
 def next_fruit_id(fruit_id: str) -> str:
@@ -153,7 +159,7 @@ def camera_loop(args: argparse.Namespace, configs: dict[str, CaptureConfig],
             captures[camera] = open_camera("opencv", index, args.capture_width, args.capture_height)
             actual_width = round(captures[camera].get(cv2.CAP_PROP_FRAME_WIDTH))
             actual_height = round(captures[camera].get(cv2.CAP_PROP_FRAME_HEIGHT))
-            print(f"{camera} (índice {index}): captura {actual_width}×{actual_height} px; "
+            print(f"{camera} (dispositivo {index}): captura {actual_width}×{actual_height} px; "
                   "JPG aceptado 480×640 px")
         selector = PassageSelector(tuple(indices), args.gap_frames)
         successful = 0

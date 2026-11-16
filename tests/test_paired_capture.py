@@ -10,7 +10,7 @@ from PIL import Image, ImageFilter
 from src.config import CaptureConfig
 from src.detector import evaluate_position
 from src.image_quality import evaluate_quality
-from src.paired_capture import process_capture
+from src.paired_capture import camera_source, process_capture
 from src.output_image import prepare_output
 from src.passage import PassageSelector
 
@@ -103,6 +103,11 @@ class StationOneTests(unittest.TestCase):
             image, (100, 100, 1180, 620), self.config.roi
         )
         self.assertEqual((oversized.size, mode, box), ((480, 640), "pad", None))
+
+    def test_camera_source_accepts_linux_device_paths(self):
+        self.assertEqual(camera_source("2"), 2)
+        self.assertEqual(camera_source("/dev/v4l/by-id/usb-camera-video-index0"),
+                         "/dev/v4l/by-id/usb-camera-video-index0")
 
     def test_passage_selects_best_and_rearms_after_gap(self):
         selector = PassageSelector(("camara_0", "camara_1"), gap_frames=2)
