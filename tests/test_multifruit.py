@@ -4,6 +4,8 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from datetime import datetime, timezone
+from unittest.mock import patch
 
 import cv2
 import numpy as np
@@ -37,7 +39,8 @@ class MultiFruitTest(unittest.TestCase):
         self.assertEqual({track.track_id for track, _ in first},
                          {track.track_id for track, _ in second})
 
-        with tempfile.TemporaryDirectory() as temporary:
+        with tempfile.TemporaryDirectory() as temporary, patch('src.main.datetime') as clock:
+            clock.now.return_value=datetime(2026,11,20,19,0,tzinfo=timezone.utc)
             root = Path(temporary)
             for track, box in second:
                 good, score, _ = assess(frame, box)

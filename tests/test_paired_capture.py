@@ -43,6 +43,22 @@ class StationOneTests(unittest.TestCase):
         self.assertFalse(evaluate_position(self.empty, self.empty, self.config).correct)
         self.assertFalse(evaluate_position(self.good, None, self.config).correct)
 
+    def test_small_visible_guide_does_not_crop_detected_fruit(self):
+        shifted = Image.fromarray(np.roll(np.asarray(self.good), 70, axis=1))
+        position = evaluate_position(shifted, self.empty, self.config)
+        self.assertTrue(position.correct)
+        self.assertGreater(position.subject_bounds[2], 0.64 * shifted.width)
+        self.assertTrue(evaluate_quality(shifted, self.config, position.subject_bounds).accepted)
+
+    def test_movement_outside_capture_zone_does_not_reject_fruit(self):
+        frame = np.asarray(self.good).copy()
+        frame[:300, :310] = 180  # A person moves outside the fruit's capture zone.
+        position = evaluate_position(Image.fromarray(frame), self.empty, self.config)
+        self.assertGreater(position.metrics["ocupacion_fuera_roi"], 0.08)
+        self.assertTrue(position.correct)
+        self.assertEqual(position.subject_bounds, evaluate_position(
+            self.good, self.empty, self.config).subject_bounds)
+
     def test_one_and_two_camera_delivery(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as temporary:
             root = Path(temporary)
