@@ -6,7 +6,15 @@ import sys
 from .camera import open_camera
 
 
-MAX_CAMERA_INDEX = 10
+def camera_device_names() -> list[str]:
+    try:
+        from pygrabber.dshow_graph import FilterGraph
+    except ImportError as exc:
+        raise RuntimeError(
+            "Falta PyGrabber para identificar las cámaras. "
+            "Instala las dependencias con: python -m pip install -r requirements.txt"
+        ) from exc
+    return FilterGraph().get_input_devices()
 
 
 def _has_frame(capture) -> bool:
@@ -17,43 +25,51 @@ def _has_frame(capture) -> bool:
     return False
 
 
-def discover_cameras() -> list[int]:
+def discover_cameras() -> list[tuple[int, str]]:
     cameras = []
-    for index in range(MAX_CAMERA_INDEX):
+    failures = []
+    # OpenCV's DirectShow indices follow this device enumeration order.
+    for index, name in enumerate(camera_device_names()):
         capture = None
         try:
             capture = open_camera("opencv", index, 1280, 720)
             if _has_frame(capture):
-                cameras.append(index)
-        except RuntimeError:
-            pass
+                cameras.append((index, name))
+            else:
+                failures.append(f"{index}: {name} no entregó imagen")
+        except RuntimeError as exc:
+            failures.append(f"{index}: {name} ({exc})")
         finally:
             if capture is not None:
                 capture.release()
+    for failure in failures:
+        print(f"No se pudo comprobar la cámara {failure}", file=sys.stderr)
     return cameras
 
 
-def select_cameras(cameras: list[int]) -> tuple[int, int]:
+def select_cameras(cameras: list[tuple[int, str]]) -> tuple[int, int]:
     if len(cameras) < 2:
         raise RuntimeError(
             f"Se detectaron {len(cameras)} cámaras; se necesitan al menos dos. "
             "Conecta las dos cámaras USB y cierra las aplicaciones que puedan usarlas."
         )
     if len(cameras) == 2:
-        return cameras[0], cameras[1]
+        return cameras[0][0], cameras[1][0]
 
     print(
         f"Se detectaron {len(cameras)} cámaras. Elige las dos cámaras USB externas "
         "(excluye la integrada, si aparece):"
     )
-    for index in cameras:
-        print(f"  {index}: cámara detectada (índice OpenCV)")
+    for index, name in cameras:
+        print(f"  {index}: {name}")
 
     selected = []
+    available_indices = [index for index, _ in cameras]
     for position in range(1, 3):
         while True:
             choice = input(f"Índice de la cámara USB externa {position}: ").strip()
-            if choice.isdecimal() and int(choice) in cameras and int(choice) not in selected:
+            if (choice.isdecimal() and int(choice) in available_indices
+                    and int(choice) not in selected):
                 selected.append(int(choice))
                 break
             print("Índice no válido; elige una cámara detectada distinta de la anterior.")
@@ -63,7 +79,12 @@ def select_cameras(cameras: list[int]) -> tuple[int, int]:
 def main() -> int:
     try:
         cameras = discover_cameras()
-        print(f"Índices de cámaras detectadas: {', '.join(map(str, cameras)) or 'ninguno'}")
+        if cameras:
+            print("Cámaras detectadas:")
+            for index, name in cameras:
+                print(f"  {index}: {name}")
+        else:
+            print("Cámaras detectadas: ninguna")
         camera_1, camera_2 = select_cameras(cameras)
     except (RuntimeError, EOFError) as exc:
         print(f"Error: {exc}", file=sys.stderr)

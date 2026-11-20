@@ -41,7 +41,7 @@ py -3 -m venv .venv
 .\iniciar_estacion1_dos_camaras.bat
 ```
 
-El lanzador comprueba qué índices de cámara entregan imagen al ejecutarse, incluida la cámara integrada si Windows la expone. Si encuentra más de dos, muestra los índices disponibles y pide elegir las dos cámaras USB externas; excluye la integrada si aparece. Si solo encuentra dos cámaras, las selecciona automáticamente, por lo que en ese caso deben ser las dos cámaras externas. La lista muestra índices OpenCV, no nombres de modelo. Cierra otras aplicaciones que puedan estar usando las cámaras antes de iniciarlo.
+El lanzador enumera los nombres de dispositivo de Windows y comprueba únicamente esos dispositivos, incluida la cámara integrada si Windows la expone. Así evita sondear índices inexistentes, que generaban mensajes `[WARN]` y `[ERROR]` de OpenCV al inicio. Si encuentra más de dos, muestra el nombre junto al índice OpenCV y pide elegir las dos cámaras USB externas; excluye la integrada si aparece. Si solo encuentra dos cámaras, las selecciona automáticamente, por lo que en ese caso deben ser las dos cámaras externas. Cierra otras aplicaciones que puedan estar usando las cámaras antes de iniciarlo.
 
 #### Linux (distribuciones basadas en Debian)
 
