@@ -8,6 +8,7 @@ import shutil
 import time
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 import cv2
 import numpy as np
@@ -91,7 +92,7 @@ def assess(frame, box):
 def save_capture(frame, box, score, captures_dir, outbox_dir, camera_id, track_id):
     captures_dir.mkdir(parents=True, exist_ok=True)
     outbox_dir.mkdir(parents=True, exist_ok=True)
-    capture_id = f"{camera_id}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+    capture_id = f"{camera_id}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid4().hex[:8]}"
     path = captures_dir / f"naranja_{capture_id}.jpg"
     height, width = frame.shape[:2]
     x1, y1, x2, y2 = box

@@ -60,8 +60,6 @@ def evaluate_position(image: Image.Image, reference: Image.Image | None,
     reason = None
     if occupied < config.min_occupancy:
         reason = "fruta_ausente_o_fuera_de_guia"
-    elif spilled > config.max_outside_occupancy:
-        reason = "fruta_fuera_de_guia"
     elif bounds and (metrics["ancho_fruta_px"] < config.min_subject_width
                      or metrics["alto_fruta_px"] < config.min_subject_height):
         reason = "fruta_demasiado_pequena"

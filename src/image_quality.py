@@ -24,6 +24,15 @@ def roi_bounds(size: tuple[int, int], roi: tuple[float, float, float, float]) ->
     return (int(x1 * width), int(y1 * height), int(x2 * width), int(y2 * height))
 
 
+def quality_for_position(image, config, position):
+    bounds = position.subject_bounds
+    if position.method == 'yolo' and bounds:
+        x1,y1,x2,y2 = bounds
+        dx,dy = round((x2-x1)*0.15),round((y2-y1)*0.15)
+        bounds = (x1+dx,y1+dy,x2-dx,y2-dy)
+    return evaluate_quality(image, config, bounds)
+
+
 def evaluate_quality(image: Image.Image, config: CaptureConfig,
                      subject_bounds: tuple[int, int, int, int] | None = None) -> QualityResult:
     """Mide la fruta detectada; si no hay detección usa la zona de inspección."""

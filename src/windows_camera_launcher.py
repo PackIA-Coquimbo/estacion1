@@ -91,7 +91,8 @@ def main() -> int:
         return 1
 
     lot = input("ID del lote (ej. Prueba_001) [Prueba_001]: ").strip() or "Prueba_001"
-    auto_mode = input("¿Captura automática al pasar la fruta? (S/N) [N]: ").strip()
+    collect_training='--collect-training' in sys.argv
+    auto_mode = '' if collect_training else input("¿Captura automática al pasar la fruta? (S/N) [N]: ").strip()
     command = [
         sys.executable, "-m", "src.paired_capture",
         "--lot", lot,
@@ -100,6 +101,8 @@ def main() -> int:
     ]
     if auto_mode.lower() == "s":
         command.append("--auto")
+    if collect_training:
+        command.append('--collect-training')
     return subprocess.call(command)
 
 
