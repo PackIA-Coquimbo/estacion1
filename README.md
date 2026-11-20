@@ -1,39 +1,33 @@
-# PackIACamara — Estación 1
+# PackIA — Estación 1: captura de naranjas
 
-La estación 1 detecta naranjas en la zona central de la cámara, comprueba encuadre, iluminación, contraste y enfoque, y guarda un recorte por fruta. Puede seguir varias naranjas separadas en una misma imagen. **No clasifica su estado**: eso corresponde a la estación 2.
+Estación de adquisición de imágenes para el proyecto PackIA. Localiza una naranja con
+YOLO, reúne varias vistas de dos cámaras USB y prepara las fotos utilizables para
+[la estación 2](https://github.com/PackIA-Coquimbo/estacion2), encargada de clasificar
+su estado. Una foto aceptada puede mostrar una naranja sana, verde o deteriorada:
+la aceptación de E1 corresponde a la calidad de la imagen.
 
---MEJORAS QUE FALTAN
-1.- El programa captura ambas naranjas en la zona de captura pero si se ponen juntas no captura bien, hay que mejorar eso o que capture ambas dentro de la zona y se les envie a la estación 2 una foto con ambas naranjas.
-2.- Acordar que necesita la estación 2: Se les enviarán una foto de cada cámara pero hay que ajustar formatos para que la enviemos y la reciban bien.
-3.- Cuando la estación 6 tenga la cinta en funcionamiento hay que ir probando la cámara con la cinta moviéndose.
-4.- Cualquier mejora que añadan considerar que más adelante debe funcionan en sistema embebido como raspberry pi
+## Estado actual
 
-La resolución de los JPG aceptados ya se ajustó a **480×640 píxeles (ancho×alto)**. Falta comprobar con imágenes reales que la fruta conserve suficiente detalle para la estación 2.
+- Detección con el modelo local `models/yolov8n.pt`, confianza predeterminada 0.55.
+- Reintentos ampliados de la zona central cuando falla la búsqueda inicial.
+- Control de nitidez, brillo, contraste y saturación dentro de la fruta detectada.
+- Ráfagas de hasta 12 fotos por cámara, con intervalo mínimo de 350 ms y filtro de
+  similitud configurable. Cada cámara conserva sus vistas válidas aunque la otra falle.
+- JPG de 480×640 píxeles (ancho×alto), recortados alrededor de la naranja, con margen
+  y bordes para conservar su proporción.
+- Identificadores comunes de lote, fruta, captura y ráfaga. Los eventos pueden contener
+  una o dos vistas; el manifiesto señala cuándo falta alguna cámara.
+- Recopilación de ejemplos, etiquetado manual y exportación de datasets separados por
+  naranja física, además de comandos de entrenamiento y evaluación.
+- Emisor secuencial compatible con el protocolo JPEG → trigger → resultado → ACK del
+  listener actual de E2, para procesos que comparten una carpeta en el mismo equipo.
 
-## Uso en PC
+Se trabaja con **una naranja física a la vez**. Para fotografiar distintos lados hay
+que girarla físicamente; la ráfaga no garantiza por sí sola una cobertura de 360°.
 
-En Windows, abre [`logica/iniciar_detector_naranja.bat`](logica/iniciar_detector_naranja.bat), o ejecuta `python -m src.main` desde la raíz del repositorio. La ventana muestra la zona de captura; pulsa `Q` o `Esc` para salir. También se puede ejecutar sin ventana con `python -m src.main --headless` y detener con `Ctrl+C`.
+## Instalación y cámaras en Windows
 
-Los recortes se guardan en `logica/captures/estacion1/`. Cada JPG se copia a `logica/outbox_e2/` junto a un JSON con identificador, cámara, hora, coordenadas y nitidez. La imagen guardada mide 480×640 sin deformar la fruta; si el recorte original tiene otra proporción, se añaden bordes. El JSON informa `image_width`, `image_height`, el tamaño del recorte original y `output_framing`. La entrega a estación 2 permanece en `pending` porque el receptor todavía no está definido. Consulta el [borrador de integración](docs/propuesta_integracion_estacion2.md).
-
-## Dos cámaras USB
-
-El mismo programa puede ejecutarse una vez por cámara, con un identificador diferente y una carpeta de datos compartida. Por ejemplo:
-
-```bash
-python -m src.main --backend opencv --camera 0 --camera-id cam_izquierda --data-dir datos
-python -m src.main --backend opencv --camera 1 --camera-id cam_derecha --data-dir datos
-```
-
-Las fotos incluyen `camera_id` y un seguimiento local. **Aún falta el coordinador que relacione las dos fotos de una naranja mediante un `fruit_id` común.** Como ambas cámaras mirarán la misma zona desde ángulos distintos, ese emparejamiento requiere calibración con el montaje real. Si dos frutas se tocan y forman una sola silueta, su separación tampoco está validada todavía.
-
-### Pruebas de dos vistas en un solo PC
-
-Para probar **una fruta a la vez** con las dos cámaras, usa el modo de captura pareada. Este modo abre ambas cámaras en un mismo proceso y asigna un `id_fruta` común a sus dos JPG. No resuelve la asociación de varias frutas simultáneas entre cámaras.
-
-#### Windows
-
-Instala Python 3 y las dependencias desde PowerShell en la raíz del repositorio:
+Probado localmente con Python 3.11 y dos cámaras USB. Desde la raíz del proyecto:
 
 ```powershell
 py -3 -m venv .venv
@@ -41,43 +35,171 @@ py -3 -m venv .venv
 .\iniciar_estacion1_dos_camaras.bat
 ```
 
-El lanzador enumera los nombres de dispositivo de Windows y comprueba únicamente esos dispositivos, incluida la cámara integrada si Windows la expone. Así evita sondear índices inexistentes, que generaban mensajes `[WARN]` y `[ERROR]` de OpenCV al inicio. Si encuentra más de dos, muestra el nombre junto al índice OpenCV y pide elegir las dos cámaras USB externas; excluye la integrada si aparece. Si solo encuentra dos cámaras, las selecciona automáticamente, por lo que en ese caso deben ser las dos cámaras externas. Cierra otras aplicaciones que puedan estar usando las cámaras antes de iniciarlo.
-
-#### Linux (distribuciones basadas en Debian)
-
-Instala los paquetes del sistema, crea un entorno virtual e instala las dependencias del proyecto:
-
-```bash
-sudo apt update
-sudo apt install python3 python3-venv udev v4l-utils
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-./iniciar_estacion1_dos_camaras.sh
-```
-
-El lanzador detecta cámaras de captura USB mediante udev y usa sus rutas persistentes en `/dev/v4l/by-id` o `/dev/v4l/by-path`, en lugar de índices que pueden cambiar. Si detecta más de dos, solicita elegir cuáles dos usar para que selecciones las cámaras externas y excluyas la integrada. Requiere `udevadm` y dos cámaras USB reconocidas por el sistema. También puedes pasar una ruta Linux directamente a `--camera` y `--camera-2`.
-
-Para comprobar cámaras o iniciar manualmente en Windows:
+El lanzador usa `.venv` si existe. Enumera las cámaras por su nombre y, si hay más de
+dos, permite seleccionar las externas. Cierra las aplicaciones que estén utilizando
+las cámaras. Para comprobar índices y resolución:
 
 ```powershell
-python -m src.probe_cameras 0 1
-python -m src.paired_capture --lot Prueba_001 --camera 0 --camera-2 1
+.\.venv\Scripts\python.exe -m src.probe_cameras 0 1
 ```
 
-El comprobador abre ambas cámaras a la vez e informa la resolución real de cada una. Si los índices indicados no funcionan, prueba otros índices detectados y cierra aplicaciones que estén usando las cámaras. En Windows se prueban DirectShow, Media Foundation y el backend predeterminado. El modo pareado solicita 1280×720 como resolución de captura; puedes cambiarla con `--capture-width` y `--capture-height`. El tamaño de salida sigue siendo 480×640.
+Si `py` no está disponible, crea el entorno con la ruta del Python instalado.
+El modelo debe existir en disco; la captura no lo descarga automáticamente.
+La instalación de dependencias sí requiere acceso a sus paquetes.
 
-Coloca las dos cámaras de forma que vean la misma zona. Con la zona vacía, pulsa **B** para calibrar el fondo de ambas. Presenta una naranja, pulsa **C** y revisa que `salidas_estacion2/Prueba_001/` contenga dos JPG de 480×640 y un JSON con el mismo `id_fruta`. Las capturas rechazadas se conservan a resolución original en `evidencia_estacion1/rechazadas/` para revisar luz, enfoque y posición. Si giras y vuelves a fotografiar una naranja, registra qué nuevos `id_fruta` corresponden a esa naranja física.
+## Capturar varias vistas
 
-Después de obtener pares consistentes en manual, prueba `--auto` con una fruta por paso y espacio entre frutas. Vuelve a pulsar **B** antes de la prueba automática. Anota cuántas frutas pasaron, cuántos pares se aceptaron y cuáles se perdieron o duplicaron. Los controles de captura calibran la adquisición de imágenes; el entrenamiento de un clasificador de defectos corresponde a estación 2 y necesita etiquetas correctas por imagen.
+Coloca ambas cámaras hacia la misma zona y mantén fondo, iluminación y montaje fijos.
+Desde el lanzador puedes elegir modo manual o automático. También puedes ejecutar:
 
-## Ejecución offline en Raspberry Pi
+```powershell
+.\.venv\Scripts\python.exe -m src.paired_capture --lot Prueba_001 --camera 0 --camera-2 1
+```
 
-La captura no descarga modelos ni necesita internet. Prepara las dependencias antes de la demostración. Con dos cámaras USB, instala previamente `python3-opencv` y `python3-numpy` en Raspberry Pi OS y prueba ambas cámaras a la vez en el equipo definitivo.
+| Tecla | Acción |
+|---|---|
+| R | Iniciar o terminar una ráfaga manual de la naranja actual |
+| C | Capturar un evento individual; en dos cámaras exige que ambas vistas sean válidas |
+| T | Guardar originales para revisar y entrenar, incluso si la detección falla |
+| N | Cambiar el ID para una nueva naranja física, cuando no hay una ráfaga activa |
+| B | Calibrar fondo vacío, necesario únicamente para el detector alternativo por fondo |
+| Q / Esc | Salir y guardar las vistas pendientes de la ráfaga |
+
+En modo automático (`--auto`) la salida de la fruta de ambas vistas cierra la ráfaga.
+Con YOLO se requieren al menos dos eventos válidos para publicar una ráfaga.
+El límite de fotos se aplica por cámara; si una falla, termina con R en modo manual
+o retira la fruta de ambas vistas en automático. Las fotos válidas conservadas no
+incluyen una vista inventada de la cámara que falló.
+
+Para ajustar la frecuencia y el límite:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.paired_capture --lot Prueba_001 --camera 0 --camera-2 1 --burst-count 20 --burst-interval-ms 250
+```
+
+`--burst-count` admite de 1 a 32 fotos por cámara. `--burst-min-change 1.5` compara vistas
+para omitir imágenes parecidas; `0` desactiva ese filtro. Una diferencia visual no
+demuestra un ángulo concreto. La ventana muestra confianza YOLO, nitidez, brillo y
+el motivo de rechazo. Existen ajustes separados para cámara 1 mediante
+`--yolo-confidence-2`, `--min-sharpness-2` y `--min-contrast-2`; deben validarse con fotos.
+
+## Archivos generados e integración con E2
+
+| Carpeta | Contenido |
+|---|---|
+| `salidas_estacion2/<lote>/` | JPEG aceptados y manifiestos JSON |
+| `evidencia_estacion1/rechazadas/` | Capturas individuales rechazadas, a resolución original |
+| `dataset_naranjas/raw/` | Ejemplos originales y anotaciones para revisión |
+| `runs/` | Resultados locales de entrenamiento y evaluación |
+
+Las tomas omitidas durante una ráfaga no se archivan automáticamente: pulsa T para
+conservar ejemplos difíciles. Los manifiestos incluyen `id_fruta`, `id_rafaga`,
+`indice_rafaga`, `total_rafaga`, cámaras esperadas, vistas incompletas, métricas y hashes.
+`total_rafaga` cuenta eventos: cada evento puede contener una o dos fotos.
+
+El listener actual de E2 recibe una imagen por turno y no consume nuestros manifiestos
+ni combina las distintas vistas de una fruta. El emisor espera ACK antes de avanzar,
+conserva pendientes en caso de timeout y registra localmente cada respuesta ligada a
+la fruta y la cámara. Debe existir un único productor del canal.
+
+Con el listener E2 ya iniciado y su `--shm-dir` apuntando a la misma carpeta:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.send_e2 --outbox salidas_estacion2 --channel C:\PackIA\canal
+```
+
+Solo se envían capturas aceptadas con método YOLO; las capturas antiguas por fondo se
+omiten. E1 no inicia envíos externos automáticamente. En equipos distintos falta un
+protocolo de red acordado. En Linux `/dev/shm` es memoria RAM; una carpeta temporal en
+Windows no garantiza ese comportamiento. Véase [el contrato y sus límites](docs/integracion_yolo_e2.md).
+
+## Recopilar datos y entrenar
+
+Abre `recolectar_ejemplos.bat`. En este modo T guarda ambas vistas con el mismo ID,
+N cambia a otra naranja física y las capturas automáticas no adelantan el identificador.
+Guarda varios giros de cada fruta e incluye ejemplos que YOLO rechace.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.train_detector label
+.\.venv\Scripts\python.exe -m src.train_detector export --destination dataset_naranjas/v1
+.\.venv\Scripts\python.exe -m src.train_detector train --data dataset_naranjas/v1/data.yaml --model models/yolov8n.pt --epochs 60
+```
+
+Las etiquetas requieren revisión humana. La exportación mantiene juntas todas las
+vistas de una naranja física y conserva la asignación train/val/test para versiones
+posteriores. El operador debe registrar correctamente la identidad de cada fruta,
+incluido cuando se reutiliza en otra sesión. El dataset local y sus anotaciones se
+mantienen fuera del control de versiones.
+
+Los pesos entrenados no se adoptan automáticamente. Evalúa `weights/best.pt` de la
+carpeta que imprima Ultralytics y prueba con frutas nuevas antes de utilizarlo:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.train_detector evaluate --data dataset_naranjas/v1/data.yaml --model runs/naranjas/detector/weights/best.pt
+.\.venv\Scripts\python.exe -m src.paired_capture --lot Modelo_propio --camera 0 --camera-2 1 --yolo-model runs/naranjas/detector/weights/best.pt
+```
+
+Consulta [la guía de etiquetado, entrenamiento y evaluación](docs/entrenar_detector.md).
+Los pesos operativos siguen siendo genéricos: todavía no se ha validado un modelo propio.
+
+## Pruebas y límites conocidos
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+La versión actual cuenta con 28 pruebas que cubren ráfagas, calidad, recortes, agrupación
+del dataset y el protocolo del listener E2 con clasificador simulado. El fixture del
+listener procede del commit E2 `2ec334d73089c9a1a6cc650a47ae0ff3a0b6f90c` y se conserva
+como referencia del contrato, no como una segunda implementación de E2.
+
+En ocho fotos conocidas de cuatro frutas, la búsqueda ampliada pasó de cinco a siete
+detecciones al mismo umbral 0.55. Las siete pasaron los filtros de imagen. Estos ejemplos
+se usaron para desarrollar la mejora y no constituyen una evaluación independiente.
+Queda una vista con confianza baja. Véase [la revisión del piloto](docs/revision_cuatro_naranjas.md).
+
+El modelo genérico puede confundir naranjas con manzanas o fallar con formas y superficies
+distintas. YOLO de detección no garantiza detectar una mano que tape la fruta.
+También faltan pruebas con cinta en movimiento, Raspberry Pi y el clasificador real
+de E2. La [validación anterior de dos cámaras](docs/validacion_dos_camaras_2026-11-13.md)
+corresponde al modo de captura previo.
+
+## Linux y modo alternativo
+
+El lanzador `iniciar_estacion1_dos_camaras.sh` identifica dispositivos USB mediante udev
+y rutas persistentes de `/dev/v4l/by-id` o `/dev/v4l/by-path`. Requiere `udevadm`, Python,
+un entorno virtual y las dependencias del proyecto. La configuración de YOLO debe
+validarse en el equipo Linux definitivo, especialmente en Raspberry Pi.
+
+El detector anterior por fondo se mantiene disponible:
 
 ```bash
-python3 -m src.main --backend opencv --camera 0 --camera-id cam_izquierda --headless --data-dir ~/packia-data
+python -m src.paired_capture --lot Prueba_001 --camera 0 --camera-2 1 --detector background --output-framing crop
 ```
 
-En Linux, `--camera` también admite rutas de `/dev/v4l/by-id/` o `/dev/v4l/by-path/` para evitar que cambie la asignación de cámara tras reiniciar. `--width` y `--height` ajustan la resolución. Con `--data-dir`, fotos y bandeja de salida se almacenan fuera del código para facilitar el traslado a la Raspberry Pi.
+En ese modo se calibra la zona vacía con B. `python -m src.main` conserva el flujo
+anterior de seguimiento de varias frutas, con fotos en `logica/captures/estacion1/`
+y bandeja en `logica/outbox_e2/`; usa su propia interfaz y no es el flujo YOLO descrito arriba.
 
-El modo pareado y la salida 480×640 cuentan con pruebas automáticas. La [validación física de dos cámaras en PC](docs/validacion_dos_camaras_2026-11-13.md) confirmó cinco pares aceptados, uno por naranja de prueba. Aún faltan pruebas con fondo controlado, cinta en movimiento y Raspberry Pi.
+## Mejoras futuras
+
+1. **Dataset y modelo propios.** Reunir más frutas, variedades, estados y ángulos de ambas
+   cámaras; añadir negativos y casos difíciles. Medir precisión, recall y errores por
+   cámara con naranjas físicas nuevas antes de sustituir los pesos.
+2. **Oclusiones y enfoque.** Detectar manos y fruta parcialmente tapada; evaluar segmentación
+   y calibrar el filtro de nitidez con ejemplos revisados del montaje real.
+3. **Cobertura de vistas.** Medir diversidad de ángulos, seleccionar las mejores fotos por
+   fruta y señalar cuándo falta una vista; probar un mecanismo de rotación controlada.
+4. **Contrato completo con E2.** Acordar IDs de fruta/vista en solicitudes y respuestas,
+   combinar resultados por naranja y validar su CNN con los recortes producidos por E1.
+   Incorporar transporte de red si las estaciones usan equipos separados.
+5. **Cinta y varias frutas.** Probar con estación 6 a diferentes velocidades, medir pérdidas
+   y duplicados y después resolver asociación entre cámaras y frutas que se tocan.
+6. **Raspberry Pi.** Medir FPS, latencia, RAM y temperatura con ambas cámaras; comparar
+   exportación ONNX y cuantización sin perder detalle útil para E2.
+7. **Operación y trazabilidad.** Simplificar el etiquetado, registrar versiones de modelo y
+   dataset, añadir recuperación de envíos tras interrupciones y comparar modelos antes
+   de adoptarlos. Revisar límites de almacenamiento y retención de evidencias locales.
+
+La prioridad inmediata es ampliar el dataset y validar el detector con frutas distintas;
+la captura de más imágenes por sí sola no entrena el modelo.

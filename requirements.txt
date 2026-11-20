@@ -1,4 +1,5 @@
 opencv-python>=4.6,<5
 numpy>=1.24,<3
 Pillow>=10,<13
-pygrabber>=0.2.12; platform_system == "Windows"
+ultralytics==8.4.216
+pygrabber>=0.2,<0.3; platform_system == "Windows"

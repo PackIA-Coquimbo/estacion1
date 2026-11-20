@@ -13,6 +13,6 @@ if exist ".venv\Scripts\python.exe" (
   )
 )
 
-%PYTHON_EXE% -m src.windows_camera_launcher
+%PYTHON_EXE% -m src.windows_camera_launcher %*
 if errorlevel 1 pause
 endlocal
