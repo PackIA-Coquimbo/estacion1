@@ -102,28 +102,80 @@ def process_capture(images: dict[str, Image.Image], lot_id: str, fruit_id: str,
     return metadata, photos, manifest
 
 
+def _save_burst_rejects(rejected_items: list[dict], lot_id: str, fruit_id: str,
+                        burst_id: str, configs: dict[str, CaptureConfig],
+                        evidence_dir: Path) -> int:
+    """Persist discarded burst candidates to evidence_dir/rechazadas for auditing."""
+    saved_count = 0
+    for item in rejected_items:
+        camera = safe_id(item["camera"])
+        source = item["image"].convert("RGB")
+        quality = item["quality"]
+        position = item["position"]
+        reason = item["reason"]
+        now = datetime.now(timezone.utc)
+        metadata = {
+            "version_interfaz": 2,
+            "estacion_origen": 1,
+            "estacion_destino": None,
+            "id_lote": safe_id(lot_id),
+            "id_fruta": safe_id(fruit_id),
+            "id_rafaga": burst_id,
+            "id_captura": f"descarte_{now.strftime('%Y%m%dT%H%M%S%fZ')}_{uuid4().hex[:8]}",
+            "timestamp": now.isoformat().replace("+00:00", "Z"),
+            "estado_captura": "descartada_rafaga",
+            "puntaje_calidad": round(float(item["score"]), 2),
+            "vistas": [{
+                "camara": camera,
+                "imagen_valida": quality.accepted,
+                "posicion_correcta": position.correct,
+                "metodo_posicion": position.method,
+                "metricas_calidad": quality.metrics,
+                "metricas_posicion": position.metrics,
+                "motivos": [reason],
+                "resolucion_origen_px": list(source.size),
+                "resolucion_guardada_px": list(source.size),
+                "encuadre_salida": "original_evidencia",
+                "recorte_origen_xyxy": None,
+            }],
+            "camaras_esperadas": list(configs.keys()),
+            "vistas_incompletas": len(configs) > 1,
+            "motivos": [f"{camera}:{reason}"],
+        }
+        publish({camera: source}, metadata, evidence_dir / "rechazadas")
+        saved_count += 1
+    return saved_count
+
+
 def process_burst(pairs: list[dict[str, Image.Image]], lot_id: str, fruit_id: str,
                   configs: dict[str, CaptureConfig], output_dir: Path, evidence_dir: Path,
-                  references: dict[str, Image.Image], output_framing: str = "crop", position_detector=None) -> int:
-    """Publish every synchronized pair under one fruit and one burst ID."""
+                  references: dict[str, Image.Image], output_framing: str = "crop",
+                  position_detector=None, rejected_items: list[dict] | None = None,
+                  min_events: int | None = None) -> int:
+    """Publish selected synchronized views under one fruit and one burst ID."""
     if not pairs:
-        print("Ráfaga sin vistas válidas; gira la fruta dentro de ambas guías")
+        print("Ráfaga sin vistas válidas; gira o centra la fruta dentro de ambas guías")
         return 0
-    if position_detector and len(pairs) < 2:
-        print("Ráfaga insuficiente: se requieren al menos dos pares válidos; repetir fruta")
+    required_events = (1 if rejected_items is not None else (2 if position_detector else 1)) if min_events is None else min_events
+    if len(pairs) < required_events:
+        print("Ráfaga insuficiente: se requieren más vistas válidas; repetir fruta")
         return 0
     burst_id = f"rafaga_{uuid4().hex[:12]}"
     accepted = 0
+    accepted_photos = 0
     for index, images in enumerate(pairs, 1):
         metadata, photos, manifest = process_capture(
-            images, lot_id, fruit_id, {camera:configs[camera] for camera in images}, output_dir, evidence_dir,
+            images, lot_id, fruit_id, {camera: configs[camera] for camera in images}, output_dir, evidence_dir,
             references, output_framing=output_framing,
             burst_id=burst_id, burst_index=index, burst_total=len(pairs),
             position_detector=position_detector, expected_cameras=tuple(configs)
         )
         _report(metadata, photos, manifest)
-        accepted += metadata["estado_captura"] == "aceptada"
-    print(f"Ráfaga {burst_id}: {accepted}/{len(pairs)} pares aceptados para {fruit_id}")
+        if metadata["estado_captura"] == "aceptada":
+            accepted += 1
+            accepted_photos += len(photos)
+    rejected_count = _save_burst_rejects(rejected_items or [], lot_id, fruit_id, burst_id, configs, evidence_dir)
+    print(f"Ráfaga {burst_id}: {accepted}/{len(pairs)} eventos ({accepted_photos} fotos aceptadas) para {fruit_id}; {rejected_count} fotos descartadas en rechazadas")
     return accepted
 
 
@@ -140,8 +192,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--collect-training", action='store_true',
                         help='Solo ejemplos: T guarda y N cambia el ID de fruta, sin capturas automáticas')
     parser.add_argument("--min-sharpness", type=float, default=65.0)
-    parser.add_argument("--min-contrast", type=float, default=10.0,
-                        help="Contraste mínimo dentro de la fruta (YOLO)")
+    parser.add_argument("--min-contrast", type=float, default=None,
+                        help="Contraste mínimo dentro de la fruta (10 en YOLO, 28 en background)")
     parser.add_argument("--lot", required=True, help="Identificador de lote")
     parser.add_argument("--fruit", default=f"fruta_{uuid4().hex[:8]}_001", help="ID inicial de fruta")
     parser.add_argument("--camera", type=camera_source, default=0,
@@ -164,13 +216,19 @@ def parse_args() -> argparse.Namespace:
                         help="Cuadro visible cámara 2")
     parser.add_argument("--confirm-position", action="store_true", help="Confirmación visual del operador")
     parser.add_argument("--auto", action="store_true", help="Ráfaga por fruta al pasar; calibración B solo con detector background")
-    parser.add_argument("--gap-frames", type=int, default=3, help="Fotogramas sin fruta para cerrar un paso")
-    parser.add_argument("--burst-count", type=int, default=12,
-                        help="Máximo de pares por fruta en ráfaga (1 a 32; por defecto 12)")
-    parser.add_argument("--burst-interval-ms", type=int, default=350,
-                        help="Intervalo mínimo entre pares (por defecto 350 ms)")
-    parser.add_argument("--burst-min-change", type=float, default=1.5,
-                        help="Cambio visual mínimo entre vistas (1.5); 0 conserva todas")
+    parser.add_argument("--gap-frames", type=int, default=3, help="Fotogramas sin fruta para cerrar o rearmar")
+    parser.add_argument("--burst-count", type=int, default=10,
+                        help="Máximo de candidatas por cámara en ráfaga (1 a 32; por defecto 10)")
+    parser.add_argument("--burst-keep", type=int, default=1,
+                        help="Mejores vistas a conservar por cámara (por defecto 1 = 2 fotos con 2 cámaras; 0 conserva todas)")
+    parser.add_argument("--burst-duration", type=float, default=1.6,
+                        help="Duración máxima de captura automática por fruta en segundos (por defecto 1.6)")
+    parser.add_argument("--burst-interval-ms", type=int, default=100,
+                        help="Intervalo mínimo entre candidatas (por defecto 100 ms)")
+    parser.add_argument("--burst-min-change", type=float, default=0.0,
+                        help="Cambio visual mínimo entre vistas (0 por defecto para fruta quieta)")
+    parser.add_argument("--burst-min-sharpness-ratio", type=float, default=0.7,
+                        help="Nitidez mínima relativa frente a la mejor toma de la cámara (0.7; 0 desactiva)")
     parser.add_argument("--output", type=Path, default=Path("salidas_estacion2"))
     parser.add_argument("--output-framing", choices=("crop", "pad", "fruit"), default="fruit",
                         help="Recortar alrededor de la fruta o conservar todo con bordes")
@@ -221,24 +279,48 @@ def camera_loop(args: argparse.Namespace, configs: dict[str, CaptureConfig],
                   "JPG aceptado 480×640 px")
         cameras = tuple(indices)
         interval = args.burst_interval_ms / 1000
+        burst_keep = getattr(args, "burst_keep", 0)
+        burst_duration = getattr(args, "burst_duration", None)
+        min_sharpness_ratio = getattr(args, "burst_min_sharpness_ratio", 0.0)
         auto_burst = AutoBurst(cameras, args.gap_frames, args.burst_count,
-                               interval, args.burst_min_change,require_all=not bool(position_detector))
+                               interval, args.burst_min_change,
+                               require_all=not bool(position_detector),
+                               max_duration_seconds=burst_duration)
         manual_burst = None
-        collection_mode=getattr(args,'collect_training',False)
+        collection_mode = getattr(args, 'collect_training', False)
         successful = 0
         read_failures = 0
+        window_name = "PackIA - Estacion 1 - frutas en cinta"
+        window_seen_visible = False
         print("C: foto | R: ráfaga | T: ejemplo para entrenar | N: siguiente fruta | Q: salir")
         if args.auto:
-            print("Automático: una fruta a la vez; guarda varios pares mientras cruza la zona")
+            print("Automático: una fruta a la vez; captura ráfaga acotada y conserva las mejores vistas")
 
-        def save_burst(pairs: list[dict[str, Image.Image]]) -> None:
+        def save_burst(pairs: list[dict[str, Image.Image]], collector: BurstCollector | None = None) -> None:
             nonlocal successful
-            accepted = process_burst(pairs, args.lot, args.fruit, configs,
+            rejected_items = []
+            selected_pairs = pairs
+            min_events = None
+            if collector is not None and (burst_keep > 0 or min_sharpness_ratio > 0):
+                selected_pairs, rejected_items = collector.select_best(burst_keep, min_sharpness_ratio)
+                min_events = 1
+            accepted = process_burst(selected_pairs, args.lot, args.fruit, configs,
                                      args.output, args.evidence, references,
-                                     args.output_framing, position_detector=position_detector)
+                                     args.output_framing, position_detector=position_detector,
+                                     rejected_items=rejected_items if collector is not None else None,
+                                     min_events=min_events)
             successful += accepted
             if accepted:
                 args.fruit = next_fruit_id(args.fruit)
+
+        def flush_pending_burst() -> None:
+            nonlocal manual_burst
+            if manual_burst is not None:
+                save_burst(manual_burst.pairs, manual_burst)
+                manual_burst = None
+            elif args.auto and auto_burst.collector.pairs:
+                save_burst(auto_burst.collector.pairs, auto_burst.collector)
+
         while True:
             frames = {}
             for camera, cap in captures.items():
@@ -250,6 +332,7 @@ def camera_loop(args: argparse.Namespace, configs: dict[str, CaptureConfig],
             if not frames:
                 read_failures += 1
                 if read_failures >= 20:
+                    flush_pending_burst()
                     raise RuntimeError("Una cámara dejó de entregar fotogramas")
                 time.sleep(0.05)
                 continue
@@ -264,7 +347,7 @@ def camera_loop(args: argparse.Namespace, configs: dict[str, CaptureConfig],
             if args.auto and not collection_mode and (position_detector or all(camera in references for camera in indices)):
                 selected = auto_burst.observe(images, results, time.monotonic())
                 if selected is not None:
-                    save_burst(selected)
+                    save_burst(selected, auto_burst.last_collector)
 
             previews = []
             for camera, frame in frames.items():
@@ -276,9 +359,9 @@ def camera_loop(args: argparse.Namespace, configs: dict[str, CaptureConfig],
                 color = (40, 220, 40) if ready else (0, 180, 255)
                 cv2.rectangle(preview, (x1, y1), (x2, y2), color, 2)
                 if position.subject_bounds and position.method == 'yolo':
-                    bx1,by1,bx2,by2 = position.subject_bounds
-                    cv2.rectangle(preview, (round(bx1*640/frame.shape[1]),round(by1*360/frame.shape[0])),
-                                  (round(bx2*640/frame.shape[1]),round(by2*360/frame.shape[0])), color, 2)
+                    bx1, by1, bx2, by2 = position.subject_bounds
+                    cv2.rectangle(preview, (round(bx1 * 640 / frame.shape[1]), round(by1 * 360 / frame.shape[0])),
+                                  (round(bx2 * 640 / frame.shape[1]), round(by2 * 360 / frame.shape[0])), color, 2)
                 status = "LISTA" if ready else ("CALIBRAR/CONFIRMAR" if not position_detector and camera not in references else "AJUSTAR")
                 cv2.putText(preview, f"{camera}: {status}", (10, 27),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.65, color, 2)
@@ -287,61 +370,81 @@ def camera_loop(args: argparse.Namespace, configs: dict[str, CaptureConfig],
                     reasons.append(position.reason)
                 cv2.putText(preview, ",".join(reasons)[:55], (10, 52),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.43, color, 1)
-                confidence = position.metrics.get('confianza_yolo',position.metrics.get('mejor_confianza_yolo',0))
+                confidence = position.metrics.get('confianza_yolo', position.metrics.get('mejor_confianza_yolo', 0))
                 cv2.putText(preview, f"YOLO {confidence:.2f}  foco {quality.metrics['nitidez_laplaciano']:.0f}  luz {quality.metrics['brillo']:.0f}",
-                            (10,75),cv2.FONT_HERSHEY_SIMPLEX,0.45,color,1)
+                            (10, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
                 previews.append(preview)
             display = cv2.hconcat(previews) if len(previews) == 2 else previews[0]
-            count = (len(auto_burst.collector.pairs) if args.auto else
-                     len(manual_burst.pairs) if manual_burst else 0)
-            collector=auto_burst.collector if args.auto else manual_burst
+            collector = auto_burst.collector if args.auto else manual_burst
             if collector and not collector.require_all:
-                for index,camera in enumerate(cameras):
-                    cv2.putText(display,f"{camera}: {collector.camera_counts[camera]}/{args.burst_count}",
-                                (10+index*640,320),cv2.FONT_HERSHEY_SIMPLEX,.5,(255,255,255),1)
-            mode = "DATOS" if collection_mode else "AUTO" if args.auto else "RAFAGA" if manual_burst else "LISTO"
-            cv2.putText(display,args.fruit,(10,296),cv2.FONT_HERSHEY_SIMPLEX,.5,(255,255,255),1)
-            controls='DATOS T:guardar ejemplo N:nueva fruta Q:salir' if collection_mode else f"{mode} C:foto R:rafaga T:ejemplo N:fruta Q:salir"
+                for index, camera in enumerate(cameras):
+                    cv2.putText(display, f"{camera}: {collector.camera_counts[camera]}/{args.burst_count}",
+                                (10 + index * 640, 320), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), 1)
+            if collection_mode:
+                mode = "DATOS"
+            elif args.auto:
+                if auto_burst.awaiting_exit:
+                    mode = "RETIRAR FRUTA (LISTO)"
+                elif auto_burst.active and burst_duration and auto_burst.started_at is not None:
+                    elapsed = max(0.0, time.monotonic() - auto_burst.started_at)
+                    mode = f"CAPTURANDO {elapsed:.1f}/{burst_duration:.1f}s"
+                else:
+                    mode = "AUTO"
+            elif manual_burst:
+                mode = "RAFAGA"
+            else:
+                mode = "LISTO"
+            cv2.putText(display, args.fruit, (10, 296), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), 1)
+            controls = 'DATOS T:guardar ejemplo N:nueva fruta Q:salir' if collection_mode else f"{mode} C:foto R:rafaga T:ejemplo N:fruta Q:salir"
             cv2.putText(display, controls,
                         (10, 345),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-            cv2.imshow("PackIA - Estacion 1 - frutas en cinta", display)
+            cv2.imshow(window_name, display)
             key = cv2.waitKey(1) & 0xFF
+            window_closed = False
+            try:
+                visible = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE)
+                if visible >= 1:
+                    window_seen_visible = True
+                elif window_seen_visible:
+                    window_closed = True
+            except cv2.error:
+                window_closed = window_seen_visible
             if key == ord('t'):
-                paths=save_samples(images,args.fruit,args.lot,results,
-                                   getattr(args,'training_dir',Path('dataset_naranjas/raw')))
+                paths = save_samples(images, args.fruit, args.lot, results,
+                                     getattr(args, 'training_dir', Path('dataset_naranjas/raw')))
                 print(f'Ejemplos guardados para revisión ({args.fruit}): {paths}')
             if key == ord('n'):
                 if manual_burst is None and (collection_mode or not auto_burst.active):
-                    args.fruit=next_fruit_id(args.fruit)
+                    args.fruit = next_fruit_id(args.fruit)
                     print(f'Siguiente fruta física: {args.fruit}')
                 else:
                     print('Termina la ráfaga o retira la fruta antes de cambiar ID; usa recolectar_ejemplos.bat para datos')
-            if key in (ord("q"), 27):
-                if manual_burst is not None:
-                    save_burst(manual_burst.pairs)
-                elif args.auto and auto_burst.collector.pairs:
-                    save_burst(auto_burst.collector.pairs)
+            if key in (ord("q"), 27) or window_closed:
+                flush_pending_burst()
                 break
             if key == ord("b") and manual_burst is not None:
                 print("Termina la ráfaga con R antes de calibrar el fondo vacío")
             elif key == ord("b"):
                 if args.auto and auto_burst.collector.pairs:
-                    save_burst(auto_burst.collector.pairs)
+                    save_burst(auto_burst.collector.pairs, auto_burst.collector)
                 args.evidence.mkdir(parents=True, exist_ok=True)
                 for camera, image in images.items():
                     references[camera] = image.copy()
                     image.save(args.evidence / f"fondo_vacio_{camera}.jpg", quality=95)
                 auto_burst = AutoBurst(cameras, args.gap_frames, args.burst_count,
-                                       interval, args.burst_min_change,require_all=not bool(position_detector))
+                                       interval, args.burst_min_change,
+                                       require_all=not bool(position_detector),
+                                       max_duration_seconds=burst_duration)
                 print("Fondos de cinta vacía calibrados; retirar frutas antes de pulsar B")
             if key == ord("r") and not args.auto and not collection_mode:
                 if manual_burst is not None:
-                    save_burst(manual_burst.pairs)
+                    save_burst(manual_burst.pairs, manual_burst)
                     manual_burst = None
                 elif position_detector or all(camera in references for camera in cameras):
                     manual_burst = BurstCollector(cameras, args.burst_count,
-                                                  interval, args.burst_min_change,require_all=not bool(position_detector))
+                                                  interval, args.burst_min_change,
+                                                  require_all=not bool(position_detector))
                     print(f"Ráfaga iniciada para {args.fruit}; gira la naranja y pulsa R para terminar")
                 else:
                     print("Calibra primero el fondo vacío con B para usar ráfaga")
@@ -349,7 +452,7 @@ def camera_loop(args: argparse.Namespace, configs: dict[str, CaptureConfig],
             if manual_burst is not None:
                 manual_burst.offer(images, results, time.monotonic())
                 if manual_burst.full:
-                    save_burst(manual_burst.pairs)
+                    save_burst(manual_burst.pairs, manual_burst)
                     manual_burst = None
             if capture_single:
                 metadata, photos, manifest = process_capture(
@@ -375,8 +478,10 @@ def main() -> int:
             raise ValueError("Confianza YOLO debe estar entre 0 y 1")
         if args.capture_width < 640 or args.capture_height < 480:
             raise ValueError("La captura solicitada debe ser al menos 640×480")
-        if not 1 <= args.burst_count <= 32 or args.burst_interval_ms < 1 or args.burst_min_change < 0:
-            raise ValueError("Ráfaga: pares 1 a 32, intervalo positivo y cambio mínimo no negativo")
+        if (not 1 <= args.burst_count <= 32 or args.burst_interval_ms < 1
+                or args.burst_min_change < 0 or args.burst_keep < 0
+                or args.burst_duration <= 0 or not 0 <= args.burst_min_sharpness_ratio <= 1):
+            raise ValueError("Ráfaga: parámetros fuera de rango válido")
         if args.image_2 and not args.image:
             raise ValueError("--image-2 requiere --image")
         if args.reference_2 and not (args.camera_2 is not None or args.image_2):
@@ -389,6 +494,8 @@ def main() -> int:
         names = ("camara_0", "camara_1") if dual else ("camara_0",)
         configs = {}
         references = {}
+        default_contrast = 10.0 if args.detector == "yolo" else 28.0
+        base_contrast = default_contrast if args.min_contrast is None else args.min_contrast
         for camera, roi_text, guide_text, path in zip(
                 names, (args.roi, args.roi_2), (args.guide_roi, args.guide_roi_2),
                 (args.reference, args.reference_2)):
@@ -396,10 +503,13 @@ def main() -> int:
             guide_roi = tuple(float(value) for value in guide_text.split(","))
             if len(roi) != 4 or len(guide_roi) != 4:
                 raise ValueError("ROI y guía requieren cuatro valores")
-            configs[camera] = CaptureConfig(roi=roi, guide_roi=guide_roi,
-                min_sharpness=(args.min_sharpness_2 if camera=='camara_1' and args.min_sharpness_2 is not None else args.min_sharpness),
-                min_contrast=(args.min_contrast_2 if camera=='camara_1' and args.min_contrast_2 is not None else args.min_contrast) if args.detector=='yolo' else 28.0,
-                yolo_confidence=args.yolo_confidence_2 if camera=='camara_1' else None)
+            configs[camera] = CaptureConfig(
+                roi=roi,
+                guide_roi=guide_roi,
+                min_sharpness=(args.min_sharpness_2 if camera == 'camara_1' and args.min_sharpness_2 is not None else args.min_sharpness),
+                min_contrast=(args.min_contrast_2 if camera == 'camara_1' and args.min_contrast_2 is not None else base_contrast),
+                yolo_confidence=args.yolo_confidence_2 if camera == 'camara_1' else None,
+            )
             if path:
                 with Image.open(path) as opened:
                     references[camera] = opened.copy()

@@ -13,6 +13,8 @@ class OpenCVCamera:
         for backend in backends:
             capture = cv2.VideoCapture(index, backend)
             if capture.isOpened():
+                # Request MJPG when available so dual 1280x720 USB cameras keep high FPS.
+                capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
                 capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
                 capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
                 self.capture = capture

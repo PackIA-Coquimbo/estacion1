@@ -91,15 +91,15 @@ def main() -> int:
         return 1
 
     lot = input("ID del lote (ej. Prueba_001) [Prueba_001]: ").strip() or "Prueba_001"
-    collect_training='--collect-training' in sys.argv
-    auto_mode = '' if collect_training else input("¿Captura automática al pasar la fruta? (S/N) [N]: ").strip()
+    collect_training = '--collect-training' in sys.argv
+    auto_mode = '' if collect_training else input("¿Captura automática al pasar la fruta? (S/N) [S]: ").strip()
     command = [
         sys.executable, "-m", "src.paired_capture",
         "--lot", lot,
         "--camera", str(camera_1),
         "--camera-2", str(camera_2),
     ]
-    if auto_mode.lower() == "s":
+    if not collect_training and auto_mode.lower() != "n":
         command.append("--auto")
     if collect_training:
         command.append('--collect-training')

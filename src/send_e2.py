@@ -1,5 +1,6 @@
 """Serial delivery to estacion2 station_listener (one JPEG, trigger, ACK)."""
 import argparse
+import ctypes
 import hashlib
 import json
 import os
@@ -8,14 +9,58 @@ import time
 from .client_e2 import _atomic_bytes
 
 
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return ctypes.GetLastError() == 5  # ACCESS_DENIED implies process exists.
+        try:
+            exit_code = ctypes.c_ulong()
+            if ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return exit_code.value == 259  # STILL_ACTIVE
+            return True
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _acquire_lock(lock: Path) -> None:
+    for _ in range(2):
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            try:
+                os.write(fd, str(os.getpid()).encode("ascii"))
+            finally:
+                os.close(fd)
+            return
+        except FileExistsError:
+            try:
+                raw = lock.read_text(encoding="ascii").strip()
+            except OSError:
+                raise
+            if raw.isdecimal() and not _pid_alive(int(raw)):
+                lock.unlink(missing_ok=True)
+                continue
+            raise
+    raise FileExistsError(lock)
+
+
 def drain(outbox: Path, channel: Path, timeout: float = 10.0) -> int:
     """One exclusive sender. Preserve in-flight work on timeout; never overwrite it."""
     channel.mkdir(parents=True, exist_ok=True)
     receipts = outbox / '.e2_receipts'
     receipts.mkdir(parents=True, exist_ok=True)
     lock = channel / 'estacion1_sender.lock'
-    fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    os.close(fd)
+    _acquire_lock(lock)
     pending = channel / 'estacion1_pending.json'
     trigger, ack = channel/'estacion_trigger.flag', channel/'estacion_ack.flag'
     result_path = channel/'estacion2_result.json'

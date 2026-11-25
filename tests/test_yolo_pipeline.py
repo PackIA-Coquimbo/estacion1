@@ -103,5 +103,18 @@ class YoloTests(unittest.TestCase):
             self.assertNotEqual(rejected['estado_captura'],'aceptada')
             self.assertEqual(len(list((root/'out').rglob('*.json'))),1)
 
+    def test_tiny_yolo_box_and_fruit_framing_without_bounds_do_not_crash(self):
+        image = Image.new('RGB', (1280, 720), (120, 120, 120))
+        position = self.detector([[600, 300, 603, 303, .9, 49]])(image, None, CaptureConfig())
+        self.assertFalse(position.correct)
+        self.assertEqual(position.reason, 'fruta_demasiado_pequena')
+        quality = quality_for_position(image, CaptureConfig(), position)
+        self.assertIsInstance(quality.accepted, bool)
+
+        output, mode, box = prepare_output(image, None, CaptureConfig().roi, 'fruit')
+        self.assertEqual(output.size, (480, 640))
+        self.assertEqual(mode, 'crop')
+        self.assertIsNotNone(box)
+
 
 if __name__=='__main__': unittest.main()

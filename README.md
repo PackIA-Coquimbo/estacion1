@@ -11,8 +11,10 @@ la aceptación de E1 corresponde a la calidad de la imagen.
 - Detección con el modelo local `models/yolov8n.pt`, confianza predeterminada 0.55.
 - Reintentos ampliados de la zona central cuando falla la búsqueda inicial.
 - Control de nitidez, brillo, contraste y saturación dentro de la fruta detectada.
-- Ráfagas de hasta 12 fotos por cámara, con intervalo mínimo de 350 ms y filtro de
-  similitud configurable. Cada cámara conserva sus vistas válidas aunque la otra falle.
+- Ráfagas acotadas para completar el ciclo en **≤ 2 segundos**: hasta 10 candidatas por
+  cámara en un máximo de 1.6 s (`--burst-interval-ms 100`, `--burst-min-change 0`),
+  conservando la **mejor vista por cámara** (`--burst-keep 1`, 2 fotos en total con dos cámaras)
+  y enviando las descartadas a `evidencia_estacion1/rechazadas/` para auditoría.
 - JPG de 480×640 píxeles (ancho×alto), recortados alrededor de la naranja, con margen
   y bordes para conservar su proporción.
 - Identificadores comunes de lote, fruta, captura y ráfaga. Los eventos pueden contener
@@ -65,35 +67,38 @@ Desde el lanzador puedes elegir modo manual o automático. También puedes ejecu
 | B | Calibrar fondo vacío, necesario únicamente para el detector alternativo por fondo |
 | Q / Esc | Salir y guardar las vistas pendientes de la ráfaga |
 
-En modo automático (`--auto`) la salida de la fruta de ambas vistas cierra la ráfaga.
-Con YOLO se requieren al menos dos eventos válidos para publicar una ráfaga.
-El límite de fotos se aplica por cámara; si una falla, termina con R en modo manual
-o retira la fruta de ambas vistas en automático. Las fotos válidas conservadas no
-incluyen una vista inventada de la cámara que falló.
+En modo automático (`--auto`, opción por defecto `[S]` en el lanzador) la ráfaga se
+cierra automáticamente tras `--burst-duration 1.6` s (o al alcanzar `--burst-count 10`
+candidatas por cámara) y espera a que la fruta salga de la zona antes de rearmarse para
+la siguiente naranja. Con YOLO basta al menos un evento válido para publicar; las vistas
+descartadas de la ráfaga (fuera del Top seleccionado o con nitidez < 70% de la mejor toma de esa
+cámara) se guardan aparte en `evidencia_estacion1/rechazadas/`.
 
-Para ajustar la frecuencia y el límite:
+Para ajustar la duración, cantidad de candidatas y cuántas conservar:
 
 ```powershell
-.\.venv\Scripts\python.exe -m src.paired_capture --lot Prueba_001 --camera 0 --camera-2 1 --burst-count 20 --burst-interval-ms 250
+.\.venv\Scripts\python.exe -m src.paired_capture --lot Prueba_001 --camera 0 --camera-2 1 --auto --burst-count 10 --burst-keep 1 --burst-duration 1.6 --burst-interval-ms 100
 ```
 
-`--burst-count` admite de 1 a 32 fotos por cámara. `--burst-min-change 1.5` compara vistas
-para omitir imágenes parecidas; `0` desactiva ese filtro. Una diferencia visual no
-demuestra un ángulo concreto. La ventana muestra confianza YOLO, nitidez, brillo y
-el motivo de rechazo. Existen ajustes separados para cámara 1 mediante
+`--burst-count` admite de 1 a 32 candidatas por cámara (`10` por defecto). `--burst-keep`
+define cuántas mejores vistas conservar por cámara (`1` por defecto = 1 mejor por ángulo; `0` conserva todas).
+`--burst-min-change 0` permite capturar sobre naranja quieta; puedes subirlo (ej. `1.5`)
+si la fruta gira para omitir imágenes parecidas. La ventana muestra confianza YOLO, nitidez,
+brillo y el motivo de rechazo. Existen ajustes separados para cámara 1 mediante
 `--yolo-confidence-2`, `--min-sharpness-2` y `--min-contrast-2`; deben validarse con fotos.
 
 ## Archivos generados e integración con E2
 
 | Carpeta | Contenido |
 |---|---|
-| `salidas_estacion2/<lote>/` | JPEG aceptados y manifiestos JSON |
-| `evidencia_estacion1/rechazadas/` | Capturas individuales rechazadas, a resolución original |
+| `salidas_estacion2/<lote>/` | JPEG aceptados (mejor foto por cámara = 2 fotos con 2 cámaras) y manifiestos JSON |
+| `evidencia_estacion1/rechazadas/` | Capturas individuales rechazadas y descartes de ráfaga, a resolución original |
 | `dataset_naranjas/raw/` | Ejemplos originales y anotaciones para revisión |
 | `runs/` | Resultados locales de entrenamiento y evaluación |
 
-Las tomas omitidas durante una ráfaga no se archivan automáticamente: pulsa T para
-conservar ejemplos difíciles. Los manifiestos incluyen `id_fruta`, `id_rafaga`,
+Las tomas descartadas durante una ráfaga por ranking o nitidez relativa se archivan en
+`evidencia_estacion1/rechazadas/<lote>/` fuera de `salidas_estacion2/`; pulsa T si además
+deseas guardar muestras para entrenamiento. Los manifiestos incluyen `id_fruta`, `id_rafaga`,
 `indice_rafaga`, `total_rafaga`, cámaras esperadas, vistas incompletas, métricas y hashes.
 `total_rafaga` cuenta eventos: cada evento puede contener una o dos fotos.
 
@@ -148,15 +153,16 @@ Los pesos operativos siguen siendo genéricos: todavía no se ha validado un mod
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-La versión actual cuenta con 28 pruebas que cubren ráfagas, calidad, recortes, agrupación
-del dataset y el protocolo del listener E2 con clasificador simulado. El fixture del
-listener procede del commit E2 `2ec334d73089c9a1a6cc650a47ae0ff3a0b6f90c` y se conserva
-como referencia del contrato, no como una segunda implementación de E2.
+La versión actual cuenta con 32 pruebas unitarias que cubren ráfagas acotadas, selección
+por ranking de calidad (Top 1 / Top N), calidad de imagen, recortes, agrupación del dataset, lanzador de cámaras
+y el protocolo del listener E2 con clasificador simulado. El fixture de
+`tests/fixtures/e2_station_listener_reference.py` reproduce el contrato JPEG/trigger/ACK
+de E2 para validar el emisor sin acoplar el modelo clasificador.
 
 En ocho fotos conocidas de cuatro frutas, la búsqueda ampliada pasó de cinco a siete
 detecciones al mismo umbral 0.55. Las siete pasaron los filtros de imagen. Estos ejemplos
 se usaron para desarrollar la mejora y no constituyen una evaluación independiente.
-Queda una vista con confianza baja. Véase [la revisión del piloto](docs/revision_cuatro_naranjas.md).
+Queda una vista con confianza baja (revisión de piloto externa al repositorio).
 
 El modelo genérico puede confundir naranjas con manzanas o fallar con formas y superficies
 distintas. YOLO de detección no garantiza detectar una mano que tape la fruta.

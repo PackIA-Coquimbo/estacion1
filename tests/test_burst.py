@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from src.burst import AutoBurst, BurstCollector
 from src.config import CaptureConfig
@@ -168,6 +168,67 @@ class BurstTests(unittest.TestCase):
             self.assertEqual(len(manifests), 2)
             self.assertEqual({item["id_fruta"] for item in manifests}, {"Fruta_001"})
             self.assertEqual(args.fruit, "Fruta_002")
+
+    def test_timed_auto_burst_selects_top5_and_audits_rejected(self):
+        collector = BurstCollector(self.cameras, max_pairs=10, interval_seconds=0.05,
+                                   min_change=0.0, require_all=False)
+        sharp_img = self.first
+        softer_img = self.first.filter(ImageFilter.GaussianBlur(0.8))
+        soft_config = CaptureConfig(min_sharpness=10.0, min_contrast=5.0)
+        for i in range(8):
+            img = sharp_img if i % 2 == 0 else softer_img
+            images = {camera: img for camera in self.cameras}
+            results = {}
+            for camera in self.cameras:
+                position = evaluate_position(img, self.empty, soft_config)
+                quality = evaluate_quality(img, soft_config, position.subject_bounds)
+                results[camera] = quality, position
+            self.assertTrue(collector.offer(images, results, i * 0.1))
+
+        selected_pairs, rejected = collector.select_best(keep_per_camera=5, min_sharpness_ratio=0.7)
+        self.assertEqual(len(selected_pairs), 4)
+        self.assertEqual(len(rejected), 8)
+        top1_pairs, top1_rejected = collector.select_best(keep_per_camera=1, min_sharpness_ratio=0.7)
+        self.assertEqual(len(top1_pairs), 1)
+        self.assertEqual(set(top1_pairs[0]), set(self.cameras))
+        self.assertEqual(len(top1_rejected), 14)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with redirect_stdout(StringIO()):
+                accepted = process_burst(
+                    top1_pairs, "L1", "F1", {c: soft_config for c in self.cameras},
+                    root / "out", root / "evidence", self.references,
+                    rejected_items=top1_rejected, min_events=1,
+                )
+            self.assertEqual(accepted, 1)
+            self.assertEqual(len(list((root / "out").rglob("*.json"))), 1)
+            self.assertEqual(len(list((root / "out").rglob("*.jpg"))), 2)
+            reject_manifests = [
+                json.loads(p.read_text(encoding="utf-8"))
+                for p in (root / "evidence" / "rechazadas").rglob("*.json")
+            ]
+            self.assertEqual(len(reject_manifests), len(top1_rejected))
+            self.assertTrue(all(item["estado_captura"] == "descartada_rafaga" for item in reject_manifests))
+
+    def test_auto_burst_closes_on_timeout_and_waits_for_exit(self):
+        automatic = AutoBurst(self.cameras, gap_frames=2, max_pairs=10,
+                              interval_seconds=0.1, min_change=0.0,
+                              require_all=False, max_duration_seconds=1.6)
+        first, first_results = self.view(self.first)
+        empty, empty_results = self.view(self.empty)
+        self.assertIsNone(automatic.observe(first, first_results, 0.0))
+        self.assertIsNone(automatic.observe(first, first_results, 0.5))
+        closed = automatic.observe(first, first_results, 1.65)
+        self.assertIsNotNone(closed)
+        self.assertTrue(automatic.awaiting_exit)
+        # Stationary fruit still present does not trigger another burst.
+        self.assertIsNone(automatic.observe(first, first_results, 1.8))
+        # Fruit exits for gap_frames -> rearms for next fruit.
+        self.assertIsNone(automatic.observe(empty, empty_results, 1.9))
+        self.assertIsNone(automatic.observe(empty, empty_results, 2.0))
+        self.assertFalse(automatic.awaiting_exit)
+        self.assertIsNone(automatic.observe(first, first_results, 2.1))
+        self.assertTrue(automatic.active)
 
 
 if __name__ == "__main__":

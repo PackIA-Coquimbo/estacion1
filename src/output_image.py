@@ -16,19 +16,17 @@ def prepare_output(image: Image.Image,
     la guía. Si la fruta no cabe completa, conserva el fotograma con bordes.
     """
     if framing not in {"crop", "pad", "fruit"}:
-        raise ValueError("El encuadre de salida debe ser crop o pad")
+        raise ValueError("El encuadre de salida debe ser crop, pad o fruit")
     source = ImageOps.exif_transpose(image).convert("RGB")
     width, height = source.size
     target_width, target_height = OUTPUT_SIZE
 
-    if framing == "fruit":
-        if subject_bounds is None:
-            raise ValueError("El recorte de fruta requiere una detección válida")
-        x1,y1,x2,y2 = subject_bounds
-        margin = round(0.08 * max(x2-x1, y2-y1))
-        box = (max(0,x1-margin), max(0,y1-margin), min(width,x2+margin), min(height,y2+margin))
+    if framing == "fruit" and subject_bounds is not None:
+        x1, y1, x2, y2 = subject_bounds
+        margin = round(0.08 * max(x2 - x1, y2 - y1))
+        box = (max(0, x1 - margin), max(0, y1 - margin), min(width, x2 + margin), min(height, y2 + margin))
         result = ImageOps.pad(source.crop(box), OUTPUT_SIZE, method=Image.Resampling.LANCZOS,
-                              color=(32,32,32))
+                              color=(32, 32, 32))
         return result, "fruit", box
 
     def padded():

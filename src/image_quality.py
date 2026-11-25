@@ -27,9 +27,13 @@ def roi_bounds(size: tuple[int, int], roi: tuple[float, float, float, float]) ->
 def quality_for_position(image, config, position):
     bounds = position.subject_bounds
     if position.method == 'yolo' and bounds:
-        x1,y1,x2,y2 = bounds
-        dx,dy = round((x2-x1)*0.15),round((y2-y1)*0.15)
-        bounds = (x1+dx,y1+dy,x2-dx,y2-dy)
+        x1, y1, x2, y2 = bounds
+        dx, dy = round((x2 - x1) * 0.15), round((y2 - y1) * 0.15)
+        inner = (x1 + dx, y1 + dy, x2 - dx, y2 - dy)
+        if inner[2] - inner[0] >= 3 and inner[3] - inner[1] >= 3:
+            bounds = inner
+        elif x2 - x1 < 3 or y2 - y1 < 3:
+            bounds = None
     return evaluate_quality(image, config, bounds)
 
 

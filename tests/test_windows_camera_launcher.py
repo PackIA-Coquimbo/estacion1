@@ -3,10 +3,20 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-from src.windows_camera_launcher import discover_cameras, select_cameras
+from src.windows_camera_launcher import discover_cameras, main, select_cameras
 
 
 class CameraLauncherTests(unittest.TestCase):
+    def test_main_defaults_auto_mode_to_yes_and_respects_no(self):
+        with patch("src.windows_camera_launcher.discover_cameras", return_value=[(0, "Cam 0"), (1, "Cam 1")]), \
+             patch("src.windows_camera_launcher.subprocess.call", return_value=0) as run_mock:
+            with patch("builtins.input", side_effect=["", ""]):
+                self.assertEqual(main(), 0)
+            self.assertIn("--auto", run_mock.call_args.args[0])
+            with patch("builtins.input", side_effect=["Lote_X", "n"]):
+                self.assertEqual(main(), 0)
+            self.assertNotIn("--auto", run_mock.call_args.args[0])
+            self.assertIn("Lote_X", run_mock.call_args.args[0])
     def test_selects_two_detected_cameras_without_prompt(self):
         with patch("builtins.input") as prompt:
             self.assertEqual(
